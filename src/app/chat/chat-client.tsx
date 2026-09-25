@@ -7,10 +7,12 @@ import type { ChatMessage, Conversation } from "@/lib/types";
 
 const suggestions = ["How can I reset my day?", "Tell me a light joke", "Help me think through a decision", "Let’s do a calm wind down"]; 
 
-function createConversation() {
+const DEFAULT_CONVERSATION_TITLE = "New conversation";
+
+function createConversation(id = crypto.randomUUID()) {
   return {
-    id: crypto.randomUUID(),
-    title: "New conversation",
+    id,
+    title: DEFAULT_CONVERSATION_TITLE,
     updatedAt: new Date().toISOString(),
     messages: [],
   } satisfies Conversation;
@@ -21,7 +23,7 @@ export default function ChatClient({ conversationId, topic }: { conversationId: 
   const [conversation, setConversation] = useState<Conversation>(() => {
     const conversations = getConversations();
     if (conversationId) {
-      return conversations.find((item) => item.id === conversationId) ?? createConversation();
+      return conversations.find((item) => item.id === conversationId) ?? createConversation(conversationId);
     }
     return createConversation();
   });
@@ -34,8 +36,11 @@ export default function ChatClient({ conversationId, topic }: { conversationId: 
   function persist(nextConversation: Conversation) {
     setAllConversations((currentConversations) => {
       const withoutCurrent = currentConversations.filter((item) => item.id !== nextConversation.id);
+      const firstUserMessage = nextConversation.messages.find((m) => m.role === "user")?.text.slice(0, 48);
       const title =
-        nextConversation.messages.find((m) => m.role === "user")?.text.slice(0, 48) || nextConversation.title;
+        nextConversation.title === DEFAULT_CONVERSATION_TITLE
+          ? firstUserMessage || DEFAULT_CONVERSATION_TITLE
+          : nextConversation.title;
 
       const updated = [
         { ...nextConversation, title, updatedAt: new Date().toISOString() },

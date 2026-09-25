@@ -6,18 +6,22 @@ import type { ChatMessage } from "@/lib/types";
 const SYSTEM_PROMPT =
   "You are AI Friendship, a warm AI companion. You are always transparent that you are AI. Be conversational, kind, and grounded. Use humor lightly when appropriate. Be respectful and calm when topics are serious. Never claim to be a human or therapist.";
 
-function demoReply(latestUserMessage: string) {
-  return `Demo mode: I’m ${process.env.NEXT_PUBLIC_COMPANION_NAME ?? "your AI friend"}. I can still chat while API keys are not configured. You said: “${latestUserMessage}”. If you add OPENAI_API_KEY, I can provide live model responses.`;
+function demoReply(latestUserMessage: string, companionName?: string) {
+  const name = companionName?.trim() || process.env.NEXT_PUBLIC_COMPANION_NAME || "your AI friend";
+  return `Demo mode: I’m ${name}. I can still chat while API keys are not configured. You said: “${latestUserMessage}”. If you add OPENAI_API_KEY, I can provide live model responses.`;
 }
 
 export async function POST(request: Request) {
   const body = (await request.json()) as { messages?: ChatMessage[]; profile?: { name?: string; preferences?: string } };
   const messages = body.messages ?? [];
   const latestUserMessage = messages.filter((message) => message.role === "user").at(-1)?.text;
-  const recentUserMessages = messages
-    .filter((message): message is ChatMessage & { role: "user" } => message.role === "user")
+  const recentConversationMessages = messages
+    .filter((message): message is ChatMessage => message.role === "user" || message.role === "assistant")
     .slice(-16)
-    .map((message) => ({ role: "user" as const, content: message.text }));
+    .map((message) => ({
+      role: message.role,
+      content: String(message.text).slice(0, 2000),
+    }));
 
   if (!latestUserMessage) {
     return NextResponse.json({ reply: "Please send a message to begin.", mode: "demo" }, { status: 400 });
@@ -28,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   if (!hasOpenAiConfig) {
-    return NextResponse.json({ reply: demoReply(latestUserMessage), mode: "demo" });
+    return NextResponse.json({ reply: demoReply(latestUserMessage, body.profile?.name), mode: "demo" });
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -45,7 +49,7 @@ export async function POST(request: Request) {
           role: "system",
           content: `Companion name: ${body.profile?.name ?? "Nova"}. Preferences: ${body.profile?.preferences ?? "n/a"}.`,
         },
-        ...recentUserMessages,
+        ...recentConversationMessages,
       ],
       temperature: 0.8,
     }),

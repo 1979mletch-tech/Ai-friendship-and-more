@@ -64,6 +64,10 @@ describe("ChatClient", () => {
     await waitFor(() => {
       expect(screen.getByText("Unable to reach companion service right now.")).toBeInTheDocument();
     });
+
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]") as Array<{ messages: Array<{ text: string }> }>;
+    expect(stored[0]?.messages.some((message) => message.text === "Can you help me?")).toBe(true);
+    expect(stored[0]?.messages.some((message) => message.text === "Demo mode reply")).toBe(false);
   });
 
   it("sends a message and stores updated conversation history", async () => {
