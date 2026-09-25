@@ -1,0 +1,140 @@
+.shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 1rem;
+  color: #f2f0ff;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+a {
+  color: #d8d0ff;
+  text-decoration: none;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #514970;
+  border-radius: 0.5rem;
+}
+
+main {
+  margin-top: 1rem;
+}
+
+.panel {
+  background: #1b1730;
+  border: 1px solid #433a61;
+  border-radius: 0.9rem;
+  padding: 1rem;
+}
+
+.starters,
+.plans,
+.grid,
+.input-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.plans {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.plan {
+  border: 1px solid #514970;
+  border-radius: 0.8rem;
+  padding: 0.8rem;
+}
+
+.grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.mode-row {
+  margin: 0.7rem 0;
+}
+
+.chat-box {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #514970;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  margin: 0.7rem 0;
+  background: #100d1f;
+}
+
+.user {
+  color: #ffddb4;
+}
+
+.assistant {
+  color: #b0ffca;
+}
+
+input,
+select,
+textarea,
+button {
+  background: #0f0b1d;
+  color: #f2f0ff;
+  border: 1px solid #5c5283;
+  border-radius: 0.5rem;
+  padding: 0.55rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+textarea {
+  width: 100%;
+  min-height: 80px;
+}
+
+.small {
+  font-size: 0.9rem;
+  color: #d0c9f0;
+}
+
+.warn {
+  color: #ffd59f;
+}
+
+.good {
+  color: #b8ffcb;
+}
+
+.immersive-room {
+  margin: 0.8rem 0;
+  border-radius: 0.9rem;
+  border: 1px solid #514970;
+  padding: 1rem;
+  background: radial-gradient(circle at top, #3b2f68 0%, #1c1832 50%, #100d1f 100%);
+  text-align: center;
+}
+
+.orb {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 0.8rem auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, #bfdbff 0%, #7b66db 60%, transparent 100%);
+  box-shadow: 0 0 28px #6d61d2;
+}
+
+footer {
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  color: #c8bff0;
+}
