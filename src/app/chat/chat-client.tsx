@@ -19,11 +19,11 @@ function createConversation(id = crypto.randomUUID()) {
 }
 
 export default function ChatClient({ conversationId, topic }: { conversationId: string | null; topic: string | null }) {
-  const [, setAllConversations] = useState<Conversation[]>(() => getConversations());
+  const initialConversations = useMemo(() => getConversations(), []);
+  const [, setAllConversations] = useState<Conversation[]>(initialConversations);
   const [conversation, setConversation] = useState<Conversation>(() => {
-    const conversations = getConversations();
     if (conversationId) {
-      return conversations.find((item) => item.id === conversationId) ?? createConversation(conversationId);
+      return initialConversations.find((item) => item.id === conversationId) ?? createConversation(conversationId);
     }
     return createConversation();
   });

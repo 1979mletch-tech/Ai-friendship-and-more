@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const messages = body.messages ?? [];
   const latestUserMessage = messages.filter((message) => message.role === "user").at(-1)?.text;
   const recentConversationMessages = messages
-    .filter((message): message is ChatMessage => message.role === "user" || message.role === "assistant")
+    .filter((message): message is ChatMessage & { role: "user" } => message.role === "user")
     .slice(-16)
     .map((message) => ({
       role: message.role,
@@ -35,25 +35,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: demoReply(latestUserMessage, body.profile?.name), mode: "demo" });
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer " + env.openAiKey,
-    },
-    body: JSON.stringify({
-      model: env.openAiModel,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "system",
-          content: `Companion name: ${body.profile?.name ?? "Nova"}. Preferences: ${body.profile?.preferences ?? "n/a"}.`,
-        },
-        ...recentConversationMessages,
-      ],
-      temperature: 0.8,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + env.openAiKey,
+      },
+      body: JSON.stringify({
+        model: env.openAiModel,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "system",
+            content: `Companion name: ${body.profile?.name ?? "Nova"}. Preferences: ${body.profile?.preferences ?? "n/a"}.`,
+          },
+          ...recentConversationMessages,
+        ],
+        temperature: 0.8,
+      }),
+    });
+  } catch (error) {
+    console.error("OpenAI chat request failed", error);
+    return NextResponse.json(
+      {
+        reply: "The live AI service could not respond right now. Please try again in a moment.",
+        mode: "live",
+      },
+      { status: 502 },
+    );
+  }
 
   if (!response.ok) {
     const content = await response.text();

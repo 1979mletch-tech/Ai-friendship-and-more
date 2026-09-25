@@ -70,6 +70,22 @@ describe("ChatClient", () => {
     expect(stored[0]?.messages.some((message) => message.text === "Demo mode reply")).toBe(false);
   });
 
+  it("shows an error when fetch rejects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down")),
+    );
+
+    render(<ChatClient conversationId={null} topic={null} />);
+
+    fireEvent.change(screen.getByLabelText("Chat input"), { target: { value: "Are you there?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("network down")).toBeInTheDocument();
+    });
+  });
+
   it("sends a message and stores updated conversation history", async () => {
     vi.stubGlobal(
       "fetch",
