@@ -14,6 +14,10 @@ export async function POST(request: Request) {
   const body = (await request.json()) as { messages?: ChatMessage[]; profile?: { name?: string; preferences?: string } };
   const messages = body.messages ?? [];
   const latestUserMessage = messages.filter((message) => message.role === "user").at(-1)?.text;
+  const recentUserMessages = messages
+    .filter((message): message is ChatMessage & { role: "user" } => message.role === "user")
+    .slice(-16)
+    .map((message) => ({ role: "user" as const, content: message.text }));
 
   if (!latestUserMessage) {
     return NextResponse.json({ reply: "Please send a message to begin.", mode: "demo" }, { status: 400 });
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
           role: "system",
           content: `Companion name: ${body.profile?.name ?? "Nova"}. Preferences: ${body.profile?.preferences ?? "n/a"}.`,
         },
-        ...messages.slice(-16).map((message) => ({ role: message.role, content: message.text })),
+        ...recentUserMessages,
       ],
       temperature: 0.8,
     }),

@@ -17,7 +17,7 @@ function createConversation() {
 }
 
 export default function ChatClient({ conversationId, topic }: { conversationId: string | null; topic: string | null }) {
-  const [allConversations, setAllConversations] = useState<Conversation[]>(() => getConversations());
+  const [, setAllConversations] = useState<Conversation[]>(() => getConversations());
   const [conversation, setConversation] = useState<Conversation>(() => {
     const conversations = getConversations();
     if (conversationId) {
@@ -32,17 +32,18 @@ export default function ChatClient({ conversationId, topic }: { conversationId: 
   const profile = useMemo(() => getProfile(), []);
 
   function persist(nextConversation: Conversation) {
-    const withoutCurrent = allConversations.filter((item) => item.id !== nextConversation.id);
-    const title =
-      nextConversation.messages.find((m) => m.role === "user")?.text.slice(0, 48) || nextConversation.title;
+    setAllConversations((currentConversations) => {
+      const withoutCurrent = currentConversations.filter((item) => item.id !== nextConversation.id);
+      const title =
+        nextConversation.messages.find((m) => m.role === "user")?.text.slice(0, 48) || nextConversation.title;
 
-    const updated = [
-      { ...nextConversation, title, updatedAt: new Date().toISOString() },
-      ...withoutCurrent,
-    ].slice(0, 50);
-
-    setAllConversations(updated);
-    saveConversations(updated);
+      const updated = [
+        { ...nextConversation, title, updatedAt: new Date().toISOString() },
+        ...withoutCurrent,
+      ].slice(0, 50);
+      saveConversations(updated);
+      return updated;
+    });
   }
 
   async function send(event: FormEvent<HTMLFormElement>) {
