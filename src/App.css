@@ -27,6 +27,15 @@ a {
   border-radius: 0.5rem;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #d8b4ff;
+  outline-offset: 2px;
+}
+
 main {
   margin-top: 1rem;
 }

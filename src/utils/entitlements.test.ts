@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getEntitlements, isProPlan, plans } from './entitlements'
+import { applyProjectNotesLimit, getEntitlements, isProPlan, plans } from './entitlements'
 
 describe('entitlements', () => {
   it('returns constrained free limits', () => {
@@ -18,5 +18,11 @@ describe('entitlements', () => {
   it('marks paid plans as proposed pricing copy', () => {
     const proposedPaid = plans.filter((p) => p.id !== 'free').every((p) => p.proposed)
     expect(proposedPaid).toBe(true)
+  })
+
+  it('trims project notes when downgraded to free', () => {
+    const notes = Array.from({ length: 10 }, (_, i) => ({ id: String(i) }))
+    const freeNotes = applyProjectNotesLimit(notes, 'free')
+    expect(freeNotes).toHaveLength(3)
   })
 })

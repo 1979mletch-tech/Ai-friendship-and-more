@@ -70,3 +70,6 @@ export const getEntitlements = (planId: PlanId): Entitlements => {
 }
 
 export const isProPlan = (planId: PlanId): boolean => planId !== 'free'
+
+export const applyProjectNotesLimit = <T>(notes: T[], planId: PlanId): T[] =>
+  notes.slice(0, getEntitlements(planId).usageLimits.projectNotesLimit)
