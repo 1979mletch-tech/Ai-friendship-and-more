@@ -97,7 +97,21 @@ export default function ChatClient({ conversationId, topic }: { conversationId: 
       setConversation(completedConversation);
       persist(completedConversation);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const errorMessage = err instanceof Error ? err.message : "Something went wrong.";
+      setError(errorMessage);
+      const failedAssistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: `I couldn’t respond right now (${errorMessage}). Please try again.`,
+        createdAt: new Date().toISOString(),
+        mode: "demo",
+      };
+      const failedConversation = {
+        ...nextConversation,
+        messages: [...nextConversation.messages, failedAssistantMessage],
+      };
+      setConversation(failedConversation);
+      persist(failedConversation);
     } finally {
       setLoading(false);
     }

@@ -14,10 +14,15 @@ function demoReply(latestUserMessage: string, companionName?: string) {
 export async function POST(request: Request) {
   const body = (await request.json()) as { messages?: ChatMessage[]; profile?: { name?: string; preferences?: string } };
   const messages = body.messages ?? [];
+
+  if (messages.length > 200) {
+    return NextResponse.json({ reply: "Message history is too large for one request.", mode: "demo" }, { status: 400 });
+  }
+
   const latestUserMessage = messages.filter((message) => message.role === "user").at(-1)?.text;
   const recentConversationMessages = messages
-    .filter((message): message is ChatMessage & { role: "user" } => message.role === "user")
-    .slice(-16)
+    .filter((message): message is ChatMessage => message.role === "user" || message.role === "assistant")
+    .slice(-24)
     .map((message) => ({
       role: message.role,
       content: String(message.text).slice(0, 2000),

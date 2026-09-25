@@ -23,15 +23,18 @@ export default function AccountPage() {
     setLoading(true);
     setStatus("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      setStatus(`Sign-in failed: ${error.message}`);
-    } else {
-      setStatus("Signed in successfully.");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setStatus(`Sign-in failed: ${error.message}`);
+      } else {
+        setStatus("Signed in successfully.");
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? `Sign-in failed: ${error.message}` : "Sign-in failed.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   return (

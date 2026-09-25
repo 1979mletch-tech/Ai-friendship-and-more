@@ -26,7 +26,11 @@ export default function SettingsPage() {
       return;
     }
 
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setStatus(`Sign-out failed: ${error.message}`);
+      return;
+    }
     setStatus("Signed out.");
   }
 
