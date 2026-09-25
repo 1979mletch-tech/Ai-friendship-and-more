@@ -19,10 +19,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: "Message history is too large for one request.", mode: "demo" }, { status: 400 });
   }
 
-  const latestUserMessage = messages.filter((message) => message.role === "user").at(-1)?.text;
-  const recentConversationMessages = messages
+  const recentMessages = messages.slice(-24);
+  const latestUserMessage = [...recentMessages].reverse().find((message) => message.role === "user")?.text;
+  const recentConversationMessages = recentMessages
     .filter((message): message is ChatMessage => message.role === "user" || message.role === "assistant")
-    .slice(-24)
     .map((message) => ({
       role: message.role,
       content: String(message.text).slice(0, 2000),
@@ -73,11 +73,10 @@ export async function POST(request: Request) {
   }
 
   if (!response.ok) {
-    const content = await response.text();
+    await response.text();
     console.error("OpenAI chat completion failed", {
       status: response.status,
       statusText: response.statusText,
-      responseBody: content.slice(0, 500),
     });
 
     return NextResponse.json(

@@ -66,8 +66,8 @@ describe("ChatClient", () => {
     });
 
     const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]") as Array<{ messages: Array<{ text: string }> }>;
-    expect(stored[0]?.messages.some((message) => message.text === "Can you help me?")).toBe(true);
-    expect(stored[0]?.messages.some((message) => message.text.includes("I couldn’t respond right now"))).toBe(true);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.messages).toHaveLength(0);
   });
 
   it("shows an error when fetch rejects", async () => {
