@@ -49,9 +49,15 @@ export async function POST(request: Request) {
 
   if (!response.ok) {
     const content = await response.text();
+    console.error("OpenAI chat completion failed", {
+      status: response.status,
+      statusText: response.statusText,
+      responseBody: content.slice(0, 500),
+    });
+
     return NextResponse.json(
       {
-        reply: `The live AI service could not respond right now. ${content.slice(0, 200)}`,
+        reply: "The live AI service could not respond right now. Please try again in a moment.",
         mode: "live",
       },
       { status: 502 },

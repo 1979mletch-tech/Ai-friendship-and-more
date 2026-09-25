@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { SectionCard } from "@/components/section-card";
 import { getConversations, getProfile, saveConversations } from "@/lib/storage";
 import type { ChatMessage, Conversation } from "@/lib/types";
@@ -17,11 +16,7 @@ function createConversation() {
   } satisfies Conversation;
 }
 
-export default function ChatPage() {
-  const params = useSearchParams();
-  const conversationId = params.get("conversation");
-  const topic = params.get("topic");
-
+export default function ChatClient({ conversationId, topic }: { conversationId: string | null; topic: string | null }) {
   const [allConversations, setAllConversations] = useState<Conversation[]>(() => getConversations());
   const [conversation, setConversation] = useState<Conversation>(() => {
     const conversations = getConversations();

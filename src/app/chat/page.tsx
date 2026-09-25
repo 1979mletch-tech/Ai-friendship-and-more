@@ -1,10 +1,20 @@
-import { Suspense } from "react";
 import ChatClient from "./chat-client";
 
-export default function ChatPage() {
+type ChatPageProps = {
+  searchParams: Promise<{
+    conversation?: string;
+    topic?: string;
+  }>;
+};
+
+export default async function ChatPage({ searchParams }: ChatPageProps) {
+  const params = await searchParams;
+
   return (
-    <Suspense fallback={<p className="text-slate-200">Loading chat…</p>}>
-      <ChatClient />
-    </Suspense>
+    <ChatClient
+      key={params.conversation ?? "new-conversation"}
+      conversationId={params.conversation ?? null}
+      topic={params.topic ?? null}
+    />
   );
 }
