@@ -1,90 +1,78 @@
-# AI Friendship V1
+# AI Friendship and More
 
-A warm AI companion product prototype built with Next.js, TypeScript, and Tailwind CSS.
+AI Friendship is a warm AI companion for artists and creative people (writers, musicians, designers, filmmakers, dancers, photographers) and for non-artists who want reflective, supportive conversation.
 
-Positioning:
-- Friendly AI companion always ready to talk
-- Clearly AI (not a human, not a therapist)
-- Not a substitute for professional care
+It is **not human**, **not a therapist**, **not an emergency service**, and **not a substitute for professional care**.
 
-## Features in this V1
+## What is implemented in this phase
 
-- Landing page with topic starters and disclosure footer
-- Account entry screen with Supabase-ready auth wiring
-- Companion setup (name, personality, preferences)
-- Chat experience with:
-  - message history
-  - suggested prompts
-  - loading/typing state
-  - empty/error states
-  - OpenAI-backed API route
-  - honest demo mode when `OPENAI_API_KEY` is missing
-- Memory management (non-sensitive preferences/interests)
-- Conversation history (continue/delete/clear)
-- Settings/profile controls
-- Privacy Centre with local data deletion controls
-- Safety screen and initial crisis-language handling
+- Creative-first positioning and topic starters (without excluding general chat use)
+- Chat mode switch: **General support** and **Creative mode**
+- Creative companion foundations:
+  - project memory notes
+  - project tags
+  - creative check-in prompts
+  - idea sparks
+  - weekly review prompts
+- Pricing/subscription route with navigation entry:
+  - Free Friend
+  - Studio Friend Pro ($9.99/month proposed)
+  - Studio Friend Annual ($79/year proposed)
+- Subscription service abstraction + environment-configurable billing setup state (Stripe-ready boundary)
+- Plan entitlements + usage-limit helpers (honest local UI states)
+- Privacy Centre secure-talk copy in plain language:
+  - encryption in transit expectation (HTTPS/TLS in production)
+  - secrets via environment variables
+  - user deletion controls for local history/memory
+  - minimal-data principles
+  - provider processing disclosure
+- Consent/disclosure control before active chat
+- VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
-## Tech stack
+## What remains external / requires credentials or professional review
 
-- Next.js (App Router)
-- TypeScript
-- Tailwind CSS
-- Supabase JS client integration points
+- Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
+- Webhook handling (checkout success, subscription updates, cancellations, invoice events)
+- Server-verified entitlements and anti-abuse limits
+- Production security review, access control model, logging policy, and retention policy
+- Provider legal/data-processing review and final privacy policy language
+- Future WebXR + Three.js immersive implementation, device testing, and voice/spatial privacy controls
 
-## Environment variables
+## Billing foundation notes
 
-Copy `.env.example` to `.env.local` and fill values as needed.
+Current implementation is intentionally safe:
 
-Required for Supabase auth integration:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- If `VITE_BILLING_PROVIDER=none` (default), pricing renders in preview mode.
+- If `VITE_BILLING_PROVIDER=stripe` but required keys/price IDs are missing, UI shows setup-needed state.
+- App does **not** fake successful payments.
 
-Required for live OpenAI responses:
-- `OPENAI_API_KEY`
+### Required production billing pieces
 
-Optional:
-- `OPENAI_MODEL` (default `gpt-4o-mini`)
-- `NEXT_PUBLIC_COMPANION_NAME`
+1. Server endpoint to create checkout session
+2. Stripe webhook endpoint with signature verification
+3. Subscription state persistence (active/past_due/canceled/trialing)
+4. Entitlement enforcement on trusted server boundary
+5. Customer portal / cancellation flow
 
-## Demo mode behavior
+## VR preview limitation and future architecture boundary
 
-If `OPENAI_API_KEY` is not set:
-- Chat still works in demo mode
-- Responses are explicitly labeled as demo
-- The app does **not** pretend a live model was used
+Current immersive route is a browser-safe visual preview that works on desktop/mobile without requiring a headset.
 
-If Supabase env vars are not set:
-- Account form remains functional
-- Sign-in shows a clear configuration message instead of fake success
+Future boundary:
 
-## Supabase setup expectations
+- optional WebXR capability detection and launch path
+- isolated Three.js/WebXR rendering module
+- accessibility fallback for keyboard/screen reader and non-headset users
+- explicit privacy controls for voice/spatial data before capture/processing
 
-This repo includes client wiring via `@supabase/supabase-js` and environment-based initialization.
-For production auth and persistence, configure:
-- Supabase Auth providers
-- Row-level security policies
-- Database tables and migrations
-
-Current persistence fallback is local browser storage to keep local development usable without credentials.
-
-## Safety limitations
-
-This includes an initial safety handling layer for language indicating immediate danger/self-harm/harm to others.
-Responses provide calm direction to emergency services and crisis hotlines.
-
-⚠️ Safety language, triggers, and escalation logic are initial implementation only and require professional review before production launch.
-
-## Run locally
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-## Scripts
+## Quality checks
 
 ```bash
 npm run lint
@@ -93,8 +81,7 @@ npm run build
 npm run test
 ```
 
-## Notes
+## Environment setup
 
-- Local data stored by default: companion profile, memory, conversation history
-- Privacy Centre provides controls to delete memory/history/all local data
-- No fake testimonials, fake user counts, or unsupported clinical claims are included
+Copy `.env.example` to `.env` and fill only the variables you use.
+Never commit secrets.
