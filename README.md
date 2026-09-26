@@ -9,6 +9,8 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 - Creative-first positioning and topic starters (without excluding general chat use)
 - Chat mode switch: **General support** and **Creative mode**
 - Browser-only companion name and separate conversations with new, continue, rename, and delete controls
+- Search across saved conversation titles and messages, with automatic local time labels
+- Edit or delete individual project notes; export local conversations and notes as JSON
 - Creative companion foundations:
   - project memory notes
   - project tags

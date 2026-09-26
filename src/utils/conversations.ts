@@ -27,3 +27,12 @@ export const normalizeConversations = (value: unknown): Conversation[] => {
 }
 
 export const titleFromMessage = (text: string): string => text.slice(0, 48).trim() || 'New conversation'
+
+export const searchConversations = (conversations: Conversation[], query: string): Conversation[] => {
+  const needle = query.trim().toLocaleLowerCase()
+  if (!needle) return conversations
+  return conversations.filter((conversation) =>
+    conversation.title.toLocaleLowerCase().includes(needle) ||
+    conversation.messages.some((message) => message.text.toLocaleLowerCase().includes(needle)),
+  )
+}

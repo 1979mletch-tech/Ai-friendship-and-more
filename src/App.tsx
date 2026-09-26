@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
-import { normalizeConversations, titleFromMessage, type ChatMessage, type Conversation } from './utils/conversations'
+import { normalizeConversations, searchConversations, titleFromMessage, type ChatMessage, type Conversation } from './utils/conversations'
+import { downloadLocalData } from './utils/export'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
@@ -72,13 +73,15 @@ const App = () => {
   )
   const [companionName, setCompanionName] = useState(() => safeLocalStorageGet(STORAGE_KEYS.profile, 'Friend'))
   const messages = conversations.find((conversation) => conversation.id === activeId)?.messages ?? []
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
       safeLocalStorageGet(STORAGE_KEYS.notes, []),
-      normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
+      'free',
     ),
   )
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
@@ -89,6 +92,14 @@ const App = () => {
     () => applyProjectNotesLimit(projectNotes, planId),
     [planId, projectNotes],
   )
+  const filteredConversations = useMemo(
+    () => searchConversations(conversations, historyQuery),
+    [conversations, historyQuery],
+  )
+  const formatTime = (value: string) => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleString()
+  }
   const today = getLocalDayKey(new Date())
   const todayUserMessages = conversations.flatMap((conversation) => conversation.messages).filter(
     (message) =>
@@ -180,11 +191,12 @@ const App = () => {
 
   const addProjectNote = () => {
     if (!project.trim() || !note.trim()) return
-    if (visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
-    setProjectNotes((current) => [
-      ...current,
-      { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() },
-    ])
+    if (!editingNoteId && visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
+    setProjectNotes((current) => editingNoteId
+      ? current.map((item) => item.id === editingNoteId
+        ? { ...item, project: project.trim(), tags: tags.trim(), note: note.trim() } : item)
+      : [...current, { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() }])
+    setEditingNoteId(null)
     setProject('')
     setTags('')
     setNote('')
@@ -232,6 +244,7 @@ const App = () => {
     <section className="panel">
       <h2>Companion Chat</h2>
       <p className="small">Talking with {companionName || 'Friend'} · {conversations.find((item) => item.id === activeId)?.title ?? 'New conversation'}</p>
+      <p className="small">Messages save automatically in this browser with your local date and time.</p>
       <button type="button" onClick={() => setActiveId(null)}>New conversation</button>{' '}
       <a href="#/history">View history</a>
       <p className="small">{disclosureText}</p>
@@ -269,6 +282,7 @@ const App = () => {
             {messages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
                 <strong>{msg.role === 'assistant' ? (companionName || 'Friend') : 'You'}:</strong> {msg.text}
+                {msg.createdAt && <time className="message-time" dateTime={msg.createdAt}>{formatTime(msg.createdAt)}</time>}
               </li>
             ))}
           </ul>
@@ -325,12 +339,25 @@ const App = () => {
         />
       </label>
       <button type="button" onClick={addProjectNote}>
-        Save project note
+        {editingNoteId ? 'Save changes' : 'Save project note'}
       </button>
+      {editingNoteId && <button type="button" onClick={() => {
+        setEditingNoteId(null); setProject(''); setTags(''); setNote('')
+      }}>Cancel edit</button>}
       <ul>
         {visibleProjectNotes.map((item) => (
           <li key={item.id}>
             <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}
+            <div className="history-actions">
+              <button type="button" onClick={() => {
+                setEditingNoteId(item.id); setProject(item.project); setTags(item.tags); setNote(item.note)
+              }}>Edit note</button>
+              <button type="button" onClick={() => {
+                if (!window.confirm('Delete this project note?')) return
+                setProjectNotes((current) => current.filter((entry) => entry.id !== item.id))
+                if (editingNoteId === item.id) { setEditingNoteId(null); setProject(''); setTags(''); setNote('') }
+              }}>Delete note</button>
+            </div>
           </li>
         ))}
       </ul>
@@ -344,12 +371,15 @@ const App = () => {
     <section className="panel">
       <h2>Conversation history</h2>
       <p className="small">Saved in this browser only. Rename, continue, or delete each conversation.</p>
+      <label>Search conversations
+        <input type="search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search titles and messages" />
+      </label>
       <button type="button" onClick={() => { setActiveId(null); window.location.hash = '/chat' }}>New conversation</button>
       {conversations.length === 0 ? <p>No conversations saved yet.</p> : (
         <ul className="history-list">
-          {conversations.map((item) => (
+          {filteredConversations.map((item) => (
             <li key={item.id}>
-              <strong>{item.title}</strong> <span className="small">({item.messages.length} messages)</span>
+              <strong>{item.title}</strong> <span className="small">({item.messages.length} messages) · Updated <time dateTime={item.updatedAt}>{formatTime(item.updatedAt)}</time></span>
               <div className="history-actions">
                 <button type="button" onClick={() => { setActiveId(item.id); window.location.hash = '/chat' }}>Continue</button>
                 <button type="button" onClick={() => {
@@ -367,6 +397,7 @@ const App = () => {
           ))}
         </ul>
       )}
+      {conversations.length > 0 && filteredConversations.length === 0 && <p>No matching conversations.</p>}
     </section>
   )
 
@@ -439,6 +470,9 @@ const App = () => {
       </p>
       <button type="button" onClick={clearLocalData}>
         Delete my local memory + history
+      </button>
+      <button type="button" onClick={() => downloadLocalData({ companionName, conversations, projectNotes })}>
+        Download my local data (JSON)
       </button>
       <button type="button" onClick={() => {
         if (!window.confirm('Delete all AI Friendship data stored in this browser?')) return
