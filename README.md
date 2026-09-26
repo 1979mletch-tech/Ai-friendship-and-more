@@ -52,6 +52,7 @@ Current implementation is intentionally safe:
 - If `VITE_BILLING_PROVIDER=none` (default), pricing renders in preview mode.
 - If `VITE_BILLING_PROVIDER=stripe` but required keys/price IDs are missing, UI shows setup-needed state.
 - App does **not** fake successful payments.
+- Paid plans remain informational and cannot be selected for higher local limits until a server-verified subscription exists.
 
 ### Required production billing pieces
 
@@ -95,7 +96,7 @@ Never commit secrets. **Do not put OpenAI or other private AI-provider keys in a
 
 ## Current data boundary
 
-The current build stores chat history, project notes, consent, plan choice, companion name and user-controlled memory in browser localStorage. This is a preview/local fallback, not an authenticated private cloud account. The UI labels that limitation explicitly.
+The current build stores chat history, project notes, consent, companion name and user-controlled memory in browser localStorage. Guest and signed-in account data use separate browser keys. The free plan is enforced in preview; any old paid plan selection is ignored. Browser storage is not encrypted or an authenticated private vault. Account-backed cloud backup is manual and remains unverified in staging.
 
 See `SECURITY.md`, `THREAT_MODEL.md`, `DEPLOYMENT.md`, and `PRODUCTION_CHECKLIST.md` before production deployment.
 
