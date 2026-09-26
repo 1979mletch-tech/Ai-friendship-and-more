@@ -78,3 +78,31 @@ export const deleteAccount = async (session: AuthSession) => {
   if (!response.ok) throw new Error(payload?.error || 'Account deletion failed.')
   saveSession(null)
 }
+
+
+export const refreshSession = async (session: AuthSession): Promise<AuthSession> => {
+  if (!session.refreshToken) throw new Error('Your session has expired. Please sign in again.')
+  const next = normalizeSession(await request('token?grant_type=refresh_token', { refresh_token: session.refreshToken }))
+  if (!next) throw new Error('Unable to refresh your session.')
+  saveSession(next)
+  return next
+}
+
+export const ensureFreshSession = async (session: AuthSession): Promise<AuthSession> => {
+  if (session.expiresAt - Date.now() > 60_000) return session
+  return refreshSession(session)
+}
+
+export const completePasswordRecovery = async (accessToken: string, password: string) => {
+  const config = readCloudConfig()
+  if (!hasCloudAuth(config)) throw new Error('Cloud authentication is not configured.')
+  if (password.length < 8 || password.length > 128) throw new Error('Password must be between 8 and 128 characters.')
+  const response = await fetch(config.supabaseUrl + '/auth/v1/user', {
+    method: 'PUT',
+    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload?.message || 'Unable to update password.')
+  return true
+}
