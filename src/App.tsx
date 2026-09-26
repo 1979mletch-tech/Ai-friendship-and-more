@@ -8,6 +8,8 @@ import { getCompanionReply } from './services/replyOrchestrator'
 import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
 import { downloadDataExport } from './utils/downloadExport'
 import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
+import { billingApi } from './services/billingApi'
+import { trustedRedirect } from './utils/redirectPolicy'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -74,6 +76,8 @@ const App = () => {
   const [authBusy, setAuthBusy] = useState(false)
   const [chatBusy, setChatBusy] = useState(false)
   const [chatError, setChatError] = useState('')
+  const [billingBusy, setBillingBusy] = useState(false)
+  const [billingError, setBillingError] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -463,6 +467,15 @@ const App = () => {
     </section>
   )
 
+  const startCheckout = async (nextPlan: Extract<PlanId, 'pro-monthly' | 'pro-annual'>) => {
+    const env = readAppEnv()
+    if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setBillingError('Sign in to a configured production account before starting checkout.'); return }
+    setBillingBusy(true); setBillingError('')
+    try { const result = await billingApi.checkout(session, nextPlan); window.location.assign(trustedRedirect(result.url, 'checkout')) }
+    catch (error) { setBillingError(error instanceof Error ? error.message : 'Checkout could not be started.') }
+    finally { setBillingBusy(false) }
+  }
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -486,9 +499,10 @@ const App = () => {
               type="button"
               aria-label={`Choose ${plan.name}`}
               aria-current={planId === plan.id}
+              disabled={billingBusy}
               onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
+                if (plan.id === 'free') { setPlanId('free'); setProjectNotes((current) => applyProjectNotesLimit(current, 'free')); return }
+                void startCheckout(plan.id)
               }}
             >
               {planId === plan.id ? 'Current plan' : 'Choose plan'}
@@ -496,6 +510,7 @@ const App = () => {
           </article>
         ))}
       </div>
+      {billingError && <p className="warn" role="alert">{billingError}</p>}
       <p className="small">
         Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
       </p>
