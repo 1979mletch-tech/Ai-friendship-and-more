@@ -47,7 +47,7 @@ export const loadSession = (): AuthSession | null => {
   try {
     const value = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
     if (!value?.accessToken || !value?.user?.id) return null
-    if (typeof value.expiresAt !== 'number' || value.expiresAt <= Date.now()) {
+    if (typeof value.expiresAt !== 'number' || (value.expiresAt <= Date.now() && !value.refreshToken)) {
       localStorage.removeItem(SESSION_KEY)
       return null
     }
@@ -70,9 +70,10 @@ export const signOut = async (session: AuthSession | null) => {
 export const deleteAccount = async (session: AuthSession) => {
   const config = readCloudConfig()
   if (!hasCloudAuth(config)) throw new Error('Cloud authentication is not configured.')
+  const active = await ensureFreshSession(session)
   const response = await fetch(config.supabaseUrl + '/functions/v1/delete-account', {
     method: 'DELETE',
-    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + session.accessToken },
+    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + active.accessToken },
   })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.error || 'Account deletion failed.')
@@ -84,12 +85,15 @@ export const refreshSession = async (session: AuthSession): Promise<AuthSession>
   if (!session.refreshToken) throw new Error('Your session has expired. Please sign in again.')
   const next = normalizeSession(await request('token?grant_type=refresh_token', { refresh_token: session.refreshToken }))
   if (!next) throw new Error('Unable to refresh your session.')
+  if (next.user.id !== session.user.id) throw new Error('Session identity changed. Please sign in again.')
   saveSession(next)
   return next
 }
 
 export const ensureFreshSession = async (session: AuthSession): Promise<AuthSession> => {
   if (session.expiresAt - Date.now() > 60_000) return session
+  const saved = loadSession()
+  if (saved?.user.id === session.user.id && saved.expiresAt - Date.now() > 60_000) return saved
   return refreshSession(session)
 }
 
