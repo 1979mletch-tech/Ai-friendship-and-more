@@ -175,7 +175,7 @@ const App = () => {
         if (!mounted) return
         setConversations(remoteConversations)
         setMemories(remoteMemories)
-        setCompanion(sanitizeCompanionProfile(remoteCompanion))
+        if (remoteCompanion) setCompanion(sanitizeCompanionProfile(remoteCompanion))
         if (remoteConversations.length) setActiveConversationId((current) => remoteConversations.some((item) => item.id === current) ? current : remoteConversations[0].id)
         setSyncStatus('synced')
       })
