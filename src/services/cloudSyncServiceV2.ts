@@ -41,13 +41,20 @@ export const backupConversation = async (
 export const deleteCloudConversation = (session: AuthSession, id: string) =>
   deleteUserRow(session, 'conversations', id)
 export const backupMemoryItems = async (session: AuthSession, items: string[]) => {
-  const desired = [...new Set(items.map((item) => item.trim()).filter(Boolean).map((item) => item.slice(0, 500)))].slice(0, 50)
+  const desired = new Map<string, string>()
+  for (const item of items) {
+    const value = item.trim().slice(0, 500)
+    if (value && !desired.has(value.toLocaleLowerCase())) desired.set(value.toLocaleLowerCase(), value)
+    if (desired.size === 50) break
+  }
   const existing = await loadCloudMemories(session)
   const byValue = new Map(existing.map((item) => [item.value.toLocaleLowerCase(), item]))
   const results = []
-  for (const value of desired) {
-    const match = byValue.get(value.toLocaleLowerCase())
-    if (!match) results.push(await insertUserRow(session, 'memories', { label: 'User-approved memory', value }))
+  for (const [key, value] of desired) {
+    if (!byValue.has(key)) {
+      const inserted = await insertUserRow(session, 'memories', { label: 'User-approved memory', value })
+      results.push(inserted)
+    }
   }
   return results
 }
