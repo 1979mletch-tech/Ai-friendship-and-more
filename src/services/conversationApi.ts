@@ -8,6 +8,7 @@ const call=async<T>(path:string,s:Session,init:RequestInit={}):Promise<T>=>{cons
 export const conversationApi={
  list:(s:Session)=>call<RemoteConversation[]>('/conversations',s),
  create:(s:Session)=>call<RemoteConversation>('/conversations',s,{method:'POST',body:'{}'}),
+ append:(s:Session,id:string,text:string,mode:'general'|'creative')=>{if(!isSafeConversationId(id))throw new Error('Invalid conversation identifier.');return call<{reply:string}>(`/conversations/${encodeURIComponent(id)}/messages`,s,{method:'POST',body:JSON.stringify({text,mode})})},
  messages:(s:Session,id:string)=>{if(!isSafeConversationId(id))throw new Error('Invalid conversation identifier.');return call<RemoteMessage[]>(`/conversations/${encodeURIComponent(id)}/messages`,s)},
  remove:(s:Session,id:string)=>{if(!isSafeConversationId(id))throw new Error('Invalid conversation identifier.');return call<void>(`/conversations/${encodeURIComponent(id)}`,s,{method:'DELETE'})}
 }
