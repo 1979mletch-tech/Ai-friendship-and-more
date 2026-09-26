@@ -3,7 +3,7 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, isCrisisText } from './utils/safety'
+import { disclosureText, getAssistantResponse } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
 type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
@@ -127,13 +127,7 @@ const App = () => {
     const userText = input.trim()
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
-    const crisis = isCrisisText(userText)
-
-    const response = crisis
-      ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
-      : chatMode === 'creative'
-        ? 'Let’s keep your creative momentum going. Want a quick spark, a project check-in, or gentle feedback on your latest idea?'
-        : 'I’m here with you. We can reflect, brainstorm, or just talk through what matters right now.'
+    const response = getAssistantResponse(userText, chatMode)
 
     const localDayKey = getLocalDayKey(new Date())
 
