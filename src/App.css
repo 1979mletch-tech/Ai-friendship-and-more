@@ -121,6 +121,20 @@ main {
   background: #352958;
 }
 
+.feedback-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+}
+
+.feedback-row button[aria-pressed="true"] {
+  border-color: #b0ffca;
+  background: #254735;
+}
+
 .chat-box {
   max-height: 220px;
   overflow: auto;

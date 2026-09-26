@@ -31,6 +31,9 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 - Server chat endpoint with provider-backed replies when `OPENAI_API_KEY` and `OPENAI_MODEL` are configured; no fabricated live reply when unavailable
 - Searchable, renameable, and deletable account conversations; editable and searchable project notes
 - Server daily usage tracking that persists after a conversation or history is deleted
+- Account security controls: change password (revokes all sessions), inspect session count, sign out other devices
+- Yes/Somewhat/No feedback on saved replies, scoped to the account and deleted with the related history
+- Complete JSON account export covering conversations, messages, notes, companion settings, and feedback; the browser also includes guest data in its export
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
@@ -86,7 +89,7 @@ Existing saved chats are migrated into an "Earlier chat" conversation when the A
 
 Set `OPENAI_API_KEY` and `OPENAI_MODEL` **only on the server** to enable signed-in live AI chat. The server uses the OpenAI Responses API with `store: false`; it sends the latest conversation turns and up to three approved project notes. Without these variables, ordinary signed-in chat returns a clear setup error and does not save the message. Crisis wording matching the local safety screen receives immediate deterministic emergency guidance without calling the provider. This screen is a limited safeguard, not a clinically validated crisis detection system. Guest chat still uses fixed sample responses. No Stripe secret is needed in this phase.
 
-This account foundation has not had a production security audit. Before a public deployment, add password recovery and email verification, durable rate limiting, migrations and backups, and deployment checks for the proxy, HTTPS, and privacy policy.
+This account foundation has not had a production security audit. Registration, sign-in, and password change have basic in-process attempt limits; these do not persist across server restarts or multiple instances. Before a public deployment, add password recovery and email verification, durable rate limiting, migrations and backups, and deployment checks for the proxy, HTTPS, and privacy policy.
 
 ## Quality checks
 

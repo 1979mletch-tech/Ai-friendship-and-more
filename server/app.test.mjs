@@ -135,3 +135,40 @@ test('upgrades prior message rows into a conversation without losing history', a
     check.close()
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('feedback, complete export, and password change respect account boundaries', async () => {
+  const app = createApp({ generateReply: async () => 'A helpful reply' })
+  app.listen(0, '127.0.0.1')
+  await once(app, 'listening')
+  const origin = `http://127.0.0.1:${app.address().port}`
+  const call = async (path, method = 'GET', body, cookie) => {
+    const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) }, body: body && JSON.stringify(body) })
+    return { status: response.status, cookie: response.headers.get('set-cookie')?.split(';')[0], data: await response.json() }
+  }
+  try {
+    const one = await call('/api/register', 'POST', { email: 'owner@example.com', password: 'first-password-123' })
+    const other = await call('/api/register', 'POST', { email: 'other@example.com', password: 'first-password-123' })
+    const thread = (await call('/api/conversations', 'POST', {}, one.cookie)).data.conversation
+    const reply = (await call('/api/chat', 'POST', { text: 'My project', conversationId: thread.id }, one.cookie)).data.messages[1]
+    assert.equal((await call('/api/feedback', 'POST', { messageId: reply.id, rating: 'yes' }, other.cookie)).status, 404)
+    assert.equal((await call('/api/feedback', 'POST', { messageId: reply.id, rating: 'yes' }, one.cookie)).status, 200)
+    const another = (await call('/api/conversations', 'POST', {}, one.cookie)).data.conversation
+    await call('/api/chat', 'POST', { text: 'Another topic', conversationId: another.id }, one.cookie)
+    const exported = await call('/api/export', 'GET', undefined, one.cookie)
+    assert.equal(exported.data.conversations.length, 2)
+    assert.equal(exported.data.messages.length, 4)
+    assert.equal(exported.data.feedback.length, 1)
+    assert.equal(exported.data.account.email, 'owner@example.com')
+    assert.equal(JSON.stringify(exported.data).includes('password_hash'), false)
+    assert.equal((await call('/api/export', 'GET', undefined, other.cookie)).data.messages.length, 0)
+    const secondSession = await call('/api/login', 'POST', { email: 'owner@example.com', password: 'first-password-123' })
+    assert.equal((await call('/api/sessions', 'GET', undefined, one.cookie)).data.sessions.length, 2)
+    await call('/api/sessions/others', 'DELETE', undefined, one.cookie)
+    assert.equal((await call('/api/me', 'GET', undefined, secondSession.cookie)).data.user, null)
+    assert.equal((await call('/api/password', 'POST', { currentPassword: 'wrong', newPassword: 'second-password-123' }, one.cookie)).status, 401)
+    assert.equal((await call('/api/password', 'POST', { currentPassword: 'first-password-123', newPassword: 'second-password-123' }, one.cookie)).status, 200)
+    assert.equal((await call('/api/me', 'GET', undefined, one.cookie)).data.user, null)
+    assert.equal((await call('/api/login', 'POST', { email: 'owner@example.com', password: 'first-password-123' })).status, 401)
+    assert.equal((await call('/api/login', 'POST', { email: 'owner@example.com', password: 'second-password-123' })).status, 200)
+  } finally { app.close() }
+})

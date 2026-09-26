@@ -3,6 +3,8 @@ export type SavedMessage = { id: string; role: 'user' | 'assistant'; text: strin
 export type SavedNote = { id: string; project: string; tags: string; note: string }
 export type Companion = { name: string; tone: string }
 export type Conversation = { id: string; title: string; createdAt: string }
+export type Feedback = { messageId: string; rating: 'yes' | 'somewhat' | 'no' }
+export type Session = { id: string; current: boolean; createdAt: string | null; expiresAt: number }
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api/${path}`, {
@@ -21,6 +23,12 @@ export const accountApi = {
   register: (email: string, password: string) => request<{ user: Account }>('register', 'POST', { email, password }),
   login: (email: string, password: string) => request<{ user: Account }>('login', 'POST', { email, password }),
   logout: () => request('logout', 'POST', {}),
+  changePassword: (currentPassword: string, newPassword: string) => request('password', 'POST', { currentPassword, newPassword }),
+  sessions: () => request<{ sessions: Session[] }>('sessions'),
+  revokeOtherSessions: () => request('sessions/others', 'DELETE'),
+  exportAccount: () => request<Record<string, unknown>>('export'),
+  feedback: () => request<{ feedback: Feedback[] }>('feedback'),
+  saveFeedback: (messageId: string, rating: Feedback['rating']) => request<Feedback>('feedback', 'POST', { messageId, rating }),
   messages: (conversationId?: string) => request<{ messages: SavedMessage[] }>(`messages${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   usage: () => request<{ messagesToday: number }>('usage'),
   conversations: () => request<{ conversations: Conversation[] }>('conversations'),

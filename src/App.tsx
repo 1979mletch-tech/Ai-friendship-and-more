@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { accountApi } from './services/account'
-import type { Account, Conversation } from './services/account'
+import type { Account, Conversation, Feedback, Session } from './services/account'
 import type { Companion } from './services/account'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
@@ -66,6 +66,10 @@ const App = () => {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [conversationSearch, setConversationSearch] = useState('')
   const [serverDailyCount, setServerDailyCount] = useState(0)
+  const [feedback, setFeedback] = useState<Feedback[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [serverNotes, setServerNotes] = useState<ProjectNote[]>([])
   const [companion, setCompanion] = useState<Companion>({ name: 'Friend', tone: 'warm and grounded' })
@@ -110,8 +114,8 @@ const App = () => {
   ).length
 
   const loadAccountData = async () => {
-    const [{ conversations: list }, { notes }, { companion: savedCompanion }, { messagesToday }] = await Promise.all([
-      accountApi.conversations(), accountApi.notes(), accountApi.companion(), accountApi.usage(),
+    const [{ conversations: list }, { notes }, { companion: savedCompanion }, { messagesToday }, { feedback: savedFeedback }, { sessions: activeSessions }] = await Promise.all([
+      accountApi.conversations(), accountApi.notes(), accountApi.companion(), accountApi.usage(), accountApi.feedback(), accountApi.sessions(),
     ])
     setConversations(list)
     setActiveConversationId(list[0]?.id ?? null)
@@ -119,6 +123,8 @@ const App = () => {
     setServerNotes(notes)
     setCompanion(savedCompanion)
     setServerDailyCount(messagesToday)
+    setFeedback(savedFeedback)
+    setSessions(activeSessions)
   }
 
   useEffect(() => {
@@ -228,12 +234,17 @@ const App = () => {
     setProjectNotes([])
   }
 
-  const exportLocalData = () => {
-    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages: visibleMessages, projectNotes: activeNotes, companion: account ? companion : undefined }, null, 2)
+  const exportLocalData = async () => {
+    let exportData: Record<string, unknown> = { exportedAt: new Date().toISOString(), messages, projectNotes }
+    if (account) {
+      try { exportData = { ...(await accountApi.exportAccount()), localBrowserData: { messages, projectNotes } } }
+      catch { setAccountError('Could not export account data'); return }
+    }
+    const data = JSON.stringify(exportData, null, 2)
     const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `ai-friendship-local-data-${getLocalDayKey(new Date())}.json`
+    link.download = `ai-friendship-data-${getLocalDayKey(new Date())}.json`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -272,13 +283,28 @@ const App = () => {
             try { const saved = await accountApi.saveCompanion(companion); setCompanion(saved.companion); setAccountError('Companion settings saved') }
             catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save companion settings') }
           }}>Save companion setup</button>
+          <h3>Security</h3>
+          <p>Active sessions: {sessions.length}. Changing your password signs out every device.</p>
+          <label>Current password <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
+          <label>New password (at least 12 characters) <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
           <button type="button" onClick={async () => {
-            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            try {
+              await accountApi.changePassword(currentPassword, newPassword)
+              setCurrentPassword(''); setNewPassword(''); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([])
+              setAccountError('Password changed. Sign in again with the new password.')
+            } catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not change password') }
+          }}>Change password and sign out</button>{' '}
+          <button type="button" onClick={async () => {
+            try { await accountApi.revokeOtherSessions(); setSessions((items) => items.filter((item) => item.current)); setAccountError('Other sessions signed out') }
+            catch { setAccountError('Could not sign out other sessions') }
+          }}>Sign out other devices</button>
+          <button type="button" onClick={async () => {
+            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not sign out') }
           }}>Sign out</button>
           <button type="button" onClick={async () => {
             if (!window.confirm('Delete this account, conversations, notes, and companion settings?')) return
-            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not delete account') }
           }}>Delete account and saved messages</button>
         </>
@@ -405,6 +431,16 @@ const App = () => {
             {visibleMessages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
                 <strong>{msg.role === 'assistant' ? (account ? companion.name : 'Friend') : 'You'}:</strong> {msg.text}
+                {account && msg.role === 'assistant' && <div className="feedback-row" aria-label="Was this reply helpful?">
+                  <span>Helpful?</span>{(['yes', 'somewhat', 'no'] as const).map((rating) => (
+                    <button key={rating} type="button" aria-pressed={feedback.find((item) => item.messageId === msg.id)?.rating === rating} onClick={async () => {
+                      try {
+                        await accountApi.saveFeedback(msg.id, rating)
+                        setFeedback((items) => [...items.filter((item) => item.messageId !== msg.id), { messageId: msg.id, rating }])
+                      } catch { setAccountError('Could not save feedback') }
+                    }}>{rating === 'yes' ? 'Yes' : rating === 'somewhat' ? 'Somewhat' : 'No'}</button>
+                  ))}
+                </div>}
               </li>
             ))}
           </ul>
@@ -533,9 +569,9 @@ const App = () => {
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>Guest chat and notes stay in this browser and use fixed sample responses. Signed-in chat and notes use the configured server; when live AI is enabled, conversation context and approved notes are sent to the AI provider.</li>
         <li>Never enter provider secrets into browser environment variables.</li>
-        <li>You can export or clear your local chat and creative notes at any time. Store exported files securely.</li>
+        <li>The export includes all saved account conversations, messages, notes, feedback, and settings, plus guest data still stored in this browser. Store the downloaded file securely.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
-        <li>A future live AI service would send messages to its provider and require updated disclosures.</li>
+        <li>When server-side AI is configured, the recent conversation and approved project notes are sent to the AI provider to generate a reply.</li>
       </ul>
       <p>
         AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
@@ -545,7 +581,7 @@ const App = () => {
         provider data-processing/legal review.
       </p>
       <div className="starters">
-        <button type="button" onClick={exportLocalData}>Export my chat and local notes (JSON)</button>
+        <button type="button" onClick={exportLocalData}>Export all my data (JSON)</button>
         <button type="button" onClick={async () => {
           if (account) {
             try { await accountApi.deleteMessages(); setServerMessages([]) }
@@ -559,7 +595,9 @@ const App = () => {
           } else setProjectNotes([])
         }}>Delete {account ? 'saved' : 'local'} project notes</button>
         <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
+        {account && <a href="#/account">Delete entire account and server data</a>}
       </div>
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
     </section>
   )
 

@@ -51,7 +51,9 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
     CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, project TEXT NOT NULL, tags TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS notes_user_idx ON notes(user_id, created_at);
     CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS daily_usage (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(user_id, day));`)
+    CREATE TABLE IF NOT EXISTS daily_usage (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(user_id, day));
+    CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, message_id TEXT NOT NULL, rating TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(user_id, message_id));`)
+  if (!db.prepare('PRAGMA table_info(sessions)').all().some((column) => column.name === 'created_at')) db.exec('ALTER TABLE sessions ADD COLUMN created_at TEXT')
   if (!db.prepare('PRAGMA table_info(messages)').all().some((column) => column.name === 'conversation_id')) {
     db.exec('ALTER TABLE messages ADD COLUMN conversation_id TEXT')
   }
@@ -67,6 +69,8 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
     db.prepare('UPDATE messages SET conversation_id = ? WHERE user_id = ? AND conversation_id IS NULL').run(id, user.user_id)
   }
   const loginAttempts = new Map()
+  const passwordAttempts = new Map()
+  const registrationAttempts = new Map()
 
   const server = createServer(async (req, res) => {
     try {
@@ -97,6 +101,9 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
 
     if (pathname === '/api/me' && req.method === 'GET') return json(res, 200, { user: publicUser })
     if (pathname === '/api/register' && req.method === 'POST') {
+      const address = req.socket.remoteAddress ?? 'unknown'
+      const recent = registrationAttempts.get(address) ?? { count: 0, until: 0 }
+      if (recent.count >= 5 && recent.until > Date.now()) return json(res, 429, { error: 'Too many registrations. Try again later.' })
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
       const password = body.password
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || typeof password !== 'string' || password.length < 12 || password.length > 256)
@@ -106,6 +113,7 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
       const derived = await scrypt(password, salt, 64)
       const id = crypto.randomUUID()
       db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run(id, email, `${salt}:${derived.toString('hex')}`, new Date().toISOString())
+      registrationAttempts.set(address, { count: recent.until > Date.now() ? recent.count + 1 : 1, until: Date.now() + 60 * 60000 })
       return establishSession(res, id, email)
     }
     if (pathname === '/api/login' && req.method === 'POST') {
@@ -133,6 +141,54 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
       return json(res, 200, { user: null }, { 'Set-Cookie': clearCookie(secureCookies) })
     }
     if (!current) return json(res, 401, { error: 'Sign in required' })
+    if (pathname === '/api/password' && req.method === 'POST') {
+      const prior = passwordAttempts.get(current.id) ?? { count: 0, until: 0 }
+      if (prior.count >= 5 && prior.until > Date.now()) return json(res, 429, { error: 'Too many attempts. Try again later.' })
+      const oldPassword = body.currentPassword
+      const newPassword = body.newPassword
+      if (typeof oldPassword !== 'string' || typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 256)
+        return json(res, 400, { error: 'New password must have 12–256 characters' })
+      const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(current.id)
+      const [salt, hash] = user.password_hash.split(':')
+      const candidate = await scrypt(oldPassword, salt, 64)
+      if (!timingSafeEqual(candidate, Buffer.from(hash, 'hex'))) {
+        passwordAttempts.set(current.id, { count: prior.until > Date.now() ? prior.count + 1 : 1, until: Date.now() + 15 * 60000 })
+        return json(res, 401, { error: 'Current password is incorrect' })
+      }
+      passwordAttempts.delete(current.id)
+      const newSalt = randomBytes(16).toString('hex')
+      const derived = await scrypt(newPassword, newSalt, 64)
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(`${newSalt}:${derived.toString('hex')}`, current.id)
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(current.id)
+      return json(res, 200, { changed: true }, { 'Set-Cookie': clearCookie(secureCookies) })
+    }
+    if (pathname === '/api/sessions' && req.method === 'GET') {
+      const sessions = db.prepare('SELECT token_hash AS id, expires_at AS expiresAt, created_at AS createdAt FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC').all(current.id, Date.now())
+      return json(res, 200, { sessions: sessions.map((item) => ({ ...item, current: item.id === tokenHash(token) })) })
+    }
+    if (pathname === '/api/sessions/others' && req.method === 'DELETE') {
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(current.id, tokenHash(token))
+      return json(res, 200, { revoked: true })
+    }
+    if (pathname === '/api/export' && req.method === 'GET') {
+      return json(res, 200, {
+        exportedAt: new Date().toISOString(), account: publicUser,
+        companion: db.prepare('SELECT name, tone FROM companions WHERE user_id = ?').get(current.id) ?? null,
+        conversations: db.prepare('SELECT id, title, created_at AS createdAt FROM conversations WHERE user_id = ? ORDER BY created_at, rowid').all(current.id),
+        messages: db.prepare('SELECT id, conversation_id AS conversationId, role, text, created_at AS createdAt FROM messages WHERE user_id = ? ORDER BY created_at, rowid').all(current.id),
+        notes: db.prepare('SELECT id, project, tags, note, created_at AS createdAt FROM notes WHERE user_id = ? ORDER BY created_at, rowid').all(current.id),
+        feedback: db.prepare('SELECT message_id AS messageId, rating, created_at AS createdAt FROM feedback WHERE user_id = ? ORDER BY created_at').all(current.id),
+      })
+    }
+    if (pathname === '/api/feedback' && req.method === 'GET') {
+      return json(res, 200, { feedback: db.prepare('SELECT message_id AS messageId, rating FROM feedback WHERE user_id = ?').all(current.id) })
+    }
+    if (pathname === '/api/feedback' && req.method === 'POST') {
+      if (!['yes', 'somewhat', 'no'].includes(body.rating) || typeof body.messageId !== 'string') return json(res, 400, { error: 'Invalid feedback' })
+      if (!db.prepare("SELECT id FROM messages WHERE id = ? AND user_id = ? AND role = 'assistant'").get(body.messageId, current.id)) return json(res, 404, { error: 'Reply not found' })
+      db.prepare('INSERT INTO feedback VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, message_id) DO UPDATE SET rating = excluded.rating, created_at = excluded.created_at').run(crypto.randomUUID(), current.id, body.messageId, body.rating, new Date().toISOString())
+      return json(res, 200, { messageId: body.messageId, rating: body.rating })
+    }
     if (pathname === '/api/conversations' && req.method === 'GET') {
       return json(res, 200, { conversations: db.prepare('SELECT id, title, created_at AS createdAt FROM conversations WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 100').all(current.id) })
     }
@@ -152,6 +208,7 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
     }
     if (pathname.startsWith('/api/conversations/') && req.method === 'DELETE') {
       const id = pathname.slice('/api/conversations/'.length)
+      db.prepare('DELETE FROM feedback WHERE user_id = ? AND message_id IN (SELECT id FROM messages WHERE user_id = ? AND conversation_id = ?)').run(current.id, current.id, id)
       const result = db.prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(id, current.id)
       db.prepare('DELETE FROM messages WHERE conversation_id = ? AND user_id = ?').run(id, current.id)
       return result.changes ? json(res, 200, { deleted: true }) : json(res, 404, { error: 'Conversation not found' })
@@ -238,6 +295,7 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
       return json(res, 201, { messages: [userMessage, assistantMessage] })
     }
     if (pathname === '/api/messages' && req.method === 'DELETE') {
+      db.prepare('DELETE FROM feedback WHERE user_id = ?').run(current.id)
       db.prepare('DELETE FROM messages WHERE user_id = ?').run(current.id)
       return json(res, 200, { messages: [] })
     }
@@ -253,7 +311,7 @@ export function createApp({ databasePath = ':memory:', secureCookies = false, ge
 
   function establishSession(res, id, email) {
     const token = randomBytes(32).toString('base64url')
-    db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(tokenHash(token), id, Date.now() + 7 * 86400000)
+    db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)').run(tokenHash(token), id, Date.now() + 7 * 86400000, new Date().toISOString())
     return json(res, 200, { user: { id, email } }, { 'Set-Cookie': sessionCookie(token, secureCookies) })
   }
   server.on('close', () => db.close())
