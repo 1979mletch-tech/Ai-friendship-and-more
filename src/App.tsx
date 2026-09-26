@@ -11,6 +11,7 @@ import { sendCloudChat } from './services/chatService'
 import { backupConversation, backupMemoryItems } from './services/cloudSyncService'
 import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
+import { accountDataKeys, localAccountKey } from './utils/localAccountScope'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -70,23 +71,23 @@ const App = () => {
   const [isSending, setIsSending] = useState(false)
   const [chatStatus, setChatStatus] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.consent, false),
+    safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
   const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.messages, []),
+    safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, session), []),
   )
-  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(STORAGE_KEYS.companionName, 'Friend'))
-  const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(STORAGE_KEYS.memory, []))
+  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Friend'))
+  const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
   const [memoryDraft, setMemoryDraft] = useState('')
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
-      safeLocalStorageGet(STORAGE_KEYS.notes, []),
+      safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, session), []),
       normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
     ),
   )
@@ -136,13 +137,13 @@ const App = () => {
     }
   }, [])
 
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memory, memoryItems), [memoryItems])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companionName, companionName), [companionName])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.memory, session), memoryItems), [memoryItems, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.companionName, session), companionName), [companionName, session])
 
   const sendMessage = async () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
@@ -188,6 +189,7 @@ const App = () => {
       },
     ])
     setInput('')
+    setAuthPassword('')
   }
 
   const addProjectNote = () => {
@@ -203,10 +205,24 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memory)
+    safeLocalStorageDelete(...accountDataKeys(session))
     setMessages([])
     setProjectNotes([])
     setMemoryItems([])
+  }
+
+  const activateSession = (next: AuthSession | null) => {
+    setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
+    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
+    setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
+    setProjectNotes(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, next), []))
+    setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
+    setInput('')
+    setMemoryDraft('')
+    setProject('')
+    setTags('')
+    setNote('')
+    setSession(next)
   }
 
   const renderHome = () => (
@@ -404,7 +420,7 @@ const App = () => {
           ))}
         </ul>
       )}
-      <button type="button" onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.messages); setMessages([]) }}>
+      <button type="button" onClick={() => { safeLocalStorageDelete(localAccountKey(STORAGE_KEYS.messages, session)); setMessages([]) }}>
         Clear conversation history
       </button>
     </section>
@@ -479,7 +495,7 @@ const App = () => {
             }}>Back up approved memory</button>
             <button type="button" onClick={async () => {
               await signOut(session)
-              setSession(null)
+              activateSession(null)
               setAuthStatus('Signed out.')
             }}>Sign out</button>
             <button className="danger" type="button" onClick={async () => {
@@ -487,8 +503,8 @@ const App = () => {
               if (!confirmed) return
               try {
                 await deleteAccount(session)
-                setSession(null)
                 clearLocalData()
+                activateSession(null)
                 setAuthStatus('Account deleted.')
               } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
             }}>Delete account permanently</button>
@@ -501,11 +517,11 @@ const App = () => {
           <label>Password<input type="password" autoComplete="current-password" minLength={8} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>
           <div className="starters">
             <button type="button" onClick={async () => {
-              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Signed in.') } }
+              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Signed in.') } }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
             }}>Sign in</button>
             <button type="button" disabled={!adultAccess} onClick={async () => {
-              try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
+              try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Registration failed.') }
             }}>Create account</button>
             <button type="button" onClick={async () => {
