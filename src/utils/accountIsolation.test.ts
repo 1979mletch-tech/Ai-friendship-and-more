@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{emptyAccountUiData,shouldResetForAccountChange}from'./accountIsolation'
+describe('account UI isolation',()=>{it('requires reset when authenticated identity changes',()=>{expect(shouldResetForAccountChange('a','b')).toBe(true);expect(shouldResetForAccountChange('a','a')).toBe(false)});it('provides no prior-user content',()=>{const x=emptyAccountUiData();expect(x.conversations).toEqual([]);expect(x.memories).toEqual([])})})
