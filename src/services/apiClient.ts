@@ -11,7 +11,7 @@ const request = async <T>(path: string, init: RequestInit = {}, token?: string):
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
   })
   if (!response.ok) throw new Error(response.status === 401 ? 'Your session has expired. Please sign in again.' : 'The request could not be completed.')
-  return response.json() as Promise<T>
+  return response.status === 204 ? undefined as T : response.json() as Promise<T>
 }
 
 export const authApi = {
