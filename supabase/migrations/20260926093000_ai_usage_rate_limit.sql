@@ -12,4 +12,6 @@ drop policy if exists "usage_insert_own" on public.ai_usage_events;
 create policy "usage_select_own" on public.ai_usage_events for select using (auth.uid() = user_id);
 create policy "usage_insert_own" on public.ai_usage_events for insert with check (auth.uid() = user_id);
 
+grant select on public.ai_usage_events to authenticated;
+
 -- Production maintenance can periodically remove old counters.
