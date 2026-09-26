@@ -235,3 +235,20 @@ label {
     animation: none !important;
   }
 }
+
+
+.account-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.danger {
+  border-color: #a95366;
+  color: #ffd7df;
+}
+
+.danger:hover,
+.danger:focus-visible {
+  background: #32101b;
+}
