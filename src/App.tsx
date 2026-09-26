@@ -7,6 +7,7 @@ import { disclosureText } from './utils/safety'
 import { getCompanionReply } from './services/replyOrchestrator'
 import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
 import { downloadDataExport } from './utils/downloadExport'
+import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
@@ -165,6 +166,8 @@ const App = () => {
   const sendMessage = async () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
+    const messageIssue = validateMessage(userText)
+    if (messageIssue) { setChatError(messageIssue); return }
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
     if (chatBusy) return
@@ -392,6 +395,7 @@ const App = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Share what’s on your mind or your project."
+          maxLength={MAX_MESSAGE_LENGTH}
         />
         <button
           type="button"
