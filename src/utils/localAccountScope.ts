@@ -10,3 +10,9 @@ export const accountDataKeys = (session: AuthSession | null) => [
   localAccountKey('ai_friendship_project_notes', session),
   localAccountKey('ai_friendship_memory', session),
 ]
+
+export const accountDeletionKeys = (session: AuthSession) => [
+  ...accountDataKeys(session),
+  localAccountKey('ai_friendship_consent', session),
+  localAccountKey('ai_friendship_companion_name', session),
+]
