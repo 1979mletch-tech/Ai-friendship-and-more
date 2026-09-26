@@ -16,6 +16,7 @@ import { sanitizeMemory, removeMemory, type MemoryItem } from './utils/memorySto
 import { memoryApi } from './services/memoryApi'
 import { privacyApi } from './services/privacyApi'
 import { loadRemoteConversations } from './services/conversationSync'
+import { conversationApi } from './services/conversationApi'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -186,14 +187,26 @@ const App = () => {
     setChatBusy(true); setChatError('')
     let response: string
     try {
-      response = await getCompanionReply({ text: userText, mode: chatMode, session, conversationId: activeConversationId })
+      const env = readAppEnv()
+      if (session && env.authMode === 'server' && env.apiBaseUrl) {
+        let serverConversationId = activeConversationId
+        if (!conversations.some((item) => item.id === activeConversationId)) {
+          const created = await conversationApi.create(session)
+          serverConversationId = created.id
+          setActiveConversationId(created.id)
+        }
+        response = (await conversationApi.append(session, serverConversationId, userText, chatMode)).reply
+      } else {
+        response = await getCompanionReply({ text: userText, mode: chatMode, session, conversationId: activeConversationId })
+      }
     } catch (error) {
       setChatError(error instanceof Error ? error.message : 'The companion reply could not be completed.')
       setChatBusy(false)
       return
     }
     setConversations((current) => {
-      const existing = current.find((item) => item.id === activeConversationId) || newLocalConversation(activeConversationId)
+      const effectiveId = activeConversationId
+      const existing = current.find((item) => item.id === effectiveId) || newLocalConversation(effectiveId)
       const updated = appendExchange(existing, userText, response)
       return [updated, ...current.filter((item) => item.id !== activeConversationId)]
     })
