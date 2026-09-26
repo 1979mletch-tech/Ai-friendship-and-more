@@ -211,7 +211,11 @@ const App = () => {
     setNote('')
   }
 
-  const clearLocalData = () => {
+  const clearLocalData = async () => {
+    const env = readAppEnv()
+    if (session && env.authMode === 'server' && env.apiBaseUrl) {
+      try { await Promise.all([privacyApi.clearConversations(session), privacyApi.clearMemories(session)]) } catch { setChatError('Server data could not be cleared. Nothing was silently claimed deleted.'); return }
+    }
     safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memories, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
     setProjectNotes([])
     setMemories([])
@@ -451,7 +455,7 @@ const App = () => {
           </li>
         ))}
       </ul>
-      <button type="button" onClick={clearLocalData}>
+      <button type="button" onClick={() => { void clearLocalData() }}>
         Clear local chat + project data
       </button>
     </section>
