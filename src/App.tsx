@@ -36,6 +36,7 @@ const STORAGE_KEYS = {
   notes: 'ai_friendship_project_notes',
   memory: 'ai_friendship_memory',
   companionName: 'ai_friendship_companion_name',
+  adultAccess: 'ai_aurora_adult_access',
 }
 
 const parseRoute = (): Route => {
@@ -64,6 +65,7 @@ const App = () => {
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('')
+  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
   const [isSending, setIsSending] = useState(false)
   const [chatStatus, setChatStatus] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
@@ -134,6 +136,7 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
@@ -141,7 +144,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companionName, companionName), [companionName])
 
   const sendMessage = async () => {
-    if (!input.trim() || !hasConsent || isSending) return
+    if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     const userText = input.trim().slice(0, 2000)
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
@@ -216,7 +219,7 @@ const App = () => {
             <a className="primary-cta" href="#/chat">Talk to Aurora</a>
             <a className="secondary-cta" href="#/pricing">Explore plans</a>
           </div>
-          <p className="trust-line">AI companion · You control memory · Clear privacy controls</p>
+          <p className="trust-line">18+ interactive experience · AI companion · You control memory · Clear privacy controls</p>
         </div>
         <div className="aurora-stage" aria-hidden="true">
           <div className="aurora-glow aurora-glow-one" />
@@ -272,6 +275,8 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
+      {!adultAccess && <div className="adult-lock"><p className="eyebrow">ADULT ACCESS</p><h2>AI Aurora is an 18+ experience.</h2><p>You must be 18 or over to use the interactive companion. Aurora is presented as an adult AI persona (25+) and is never presented as a child or teenager.</p><button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button><a href="#/">Leave interactive experience</a><p className="small">This confirmation is a preview control. Production launch requires the chosen proportionate age-assurance mechanism to be configured and verified.</p></div>}
+      <div className={!adultAccess ? 'adult-protected' : ''} aria-hidden={!adultAccess}>
       <h2>Companion Chat</h2>
       <p className="small">{disclosureText}</p>
       <label className="consent">
@@ -378,6 +383,7 @@ const App = () => {
       <button type="button" onClick={clearLocalData}>
         Clear local chat + project data
       </button>
+      </div>
     </section>
   )
 
@@ -450,6 +456,7 @@ const App = () => {
   const renderAccount = () => (
     <section className="panel">
       <h2>Account</h2>
+      {!adultAccess && <div className="age-notice"><strong>18+ only.</strong> Adult eligibility must be established before account creation or interactive companion access.</div>}
       {!hasCloudAuth() ? (
         <p className="warn">Cloud accounts are not configured on this deployment yet. Local preview features remain available.</p>
       ) : session ? (
@@ -496,7 +503,7 @@ const App = () => {
               try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Signed in.') } }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
             }}>Sign in</button>
-            <button type="button" onClick={async () => {
+            <button type="button" disabled={!adultAccess} onClick={async () => {
               try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Registration failed.') }
             }}>Create account</button>
@@ -553,6 +560,7 @@ const App = () => {
   const renderPrivacy = () => (
     <section className="panel">
       <h2>Privacy Centre</h2>
+      <div className="age-notice"><strong>Adult-only interactive service.</strong> AI Aurora is intended for users aged 18+. Age assurance should collect only the minimum information needed and payment-card possession is not treated as proof of age.</div>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>Secrets must stay in environment variables, never hard-coded.</li>
