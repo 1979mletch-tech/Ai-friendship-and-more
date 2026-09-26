@@ -6,7 +6,7 @@ import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlem
 import { disclosureText, getAssistantResponse } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -29,11 +29,13 @@ const STORAGE_KEYS = {
   plan: 'ai_friendship_plan',
   messages: 'ai_friendship_messages',
   notes: 'ai_friendship_project_notes',
+  memory: 'ai_friendship_memory',
+  companionName: 'ai_friendship_companion_name',
 }
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -62,6 +64,9 @@ const App = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(STORAGE_KEYS.messages, []),
   )
+  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(STORAGE_KEYS.companionName, 'Friend'))
+  const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(STORAGE_KEYS.memory, []))
+  const [memoryDraft, setMemoryDraft] = useState('')
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -121,6 +126,8 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memory, memoryItems), [memoryItems])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companionName, companionName), [companionName])
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
@@ -164,9 +171,10 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes)
+    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memory)
     setMessages([])
     setProjectNotes([])
+    setMemoryItems([])
   }
 
   const renderHome = () => (
@@ -236,7 +244,7 @@ const App = () => {
           <ul>
             {messages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
-                <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <strong>{msg.role === 'assistant' ? companionName : 'You'}:</strong> {msg.text}
               </li>
             ))}
           </ul>
@@ -305,6 +313,66 @@ const App = () => {
       <button type="button" onClick={clearLocalData}>
         Clear local chat + project data
       </button>
+    </section>
+  )
+
+
+  const renderHistory = () => (
+    <section className="panel">
+      <h2>Conversation History</h2>
+      <p className="small">History is stored on this device in the current preview build. Production account sync is not enabled yet.</p>
+      {messages.length === 0 ? <p>No saved messages yet.</p> : (
+        <ul className="history-list">
+          {messages.map((msg) => (
+            <li key={msg.id}>
+              <strong>{msg.role === 'assistant' ? companionName : 'You'}</strong>
+              <span>{msg.text}</span>
+              <small>{msg.createdAt ? new Date(msg.createdAt).toLocaleString() : 'Saved locally'}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.messages); setMessages([]) }}>
+        Clear conversation history
+      </button>
+    </section>
+  )
+
+  const renderMemory = () => (
+    <section className="panel">
+      <h2>Memory</h2>
+      <p>Choose what {companionName} may remember. Memory is user-controlled and local-only in this preview.</p>
+      <div className="input-row">
+        <input aria-label="Memory item" value={memoryDraft} onChange={(e) => setMemoryDraft(e.target.value)} placeholder="Example: I am writing a novel" maxLength={240} />
+        <button type="button" onClick={() => {
+          const value = memoryDraft.trim()
+          if (!value || memoryItems.includes(value)) return
+          setMemoryItems((current) => [...current, value].slice(-50))
+          setMemoryDraft('')
+        }}>Remember this</button>
+      </div>
+      {memoryItems.length === 0 ? <p className="small">Nothing saved to memory.</p> : (
+        <ul className="memory-list">{memoryItems.map((item) => (
+          <li key={item}><span>{item}</span><button type="button" onClick={() => setMemoryItems((current) => current.filter((value) => value !== item))}>Forget</button></li>
+        ))}</ul>
+      )}
+      <button type="button" onClick={() => setMemoryItems([])}>Clear all memory</button>
+    </section>
+  )
+
+  const renderSettings = () => (
+    <section className="panel">
+      <h2>Companion Settings</h2>
+      <label>
+        Companion name
+        <input value={companionName} maxLength={32} onChange={(e) => setCompanionName(e.target.value.replace(/[<>]/g, '').slice(0, 32))} />
+      </label>
+      <p className="small">AI Friendship always remains clearly identified as AI even when you choose a companion name.</p>
+      <h3>Data controls</h3>
+      <p className="small">Deleting local data removes chat, project notes and memory from this browser. It does not claim to delete data from external providers.</p>
+      <button type="button" onClick={clearLocalData}>Delete local chat, memory + project data</button>
+      <h3>Account status</h3>
+      <p className="warn">Account sign-in and cloud sync are not enabled in this preview build. Do not treat this device-only storage as a private account vault.</p>
     </section>
   )
 
@@ -410,6 +478,15 @@ const App = () => {
     case '/chat':
       page = renderChat()
       break
+    case '/history':
+      page = renderHistory()
+      break
+    case '/memory':
+      page = renderMemory()
+      break
+    case '/settings':
+      page = renderSettings()
+      break
     case '/pricing':
       page = renderPricing()
       break
@@ -431,6 +508,9 @@ const App = () => {
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
+          <a href="#/history">History</a>
+          <a href="#/memory">Memory</a>
+          <a href="#/settings">Settings</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>
