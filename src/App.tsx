@@ -65,6 +65,8 @@ const App = () => {
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const authBusyRef = useRef(false)
   const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
   const [isSending, setIsSending] = useState(false)
   const chatGate = useRef(new ChatRequestGate())
@@ -236,6 +238,15 @@ const App = () => {
     setTags('')
     setNote('')
     setSession(next)
+  }
+
+  const runAccountAction = async (action: () => Promise<void>) => {
+    if (authBusyRef.current) return
+    authBusyRef.current = true
+    setAuthBusy(true)
+    try { await action() }
+    catch { setAuthStatus('The account action could not be completed. Please try again.') }
+    finally { authBusyRef.current = false; setAuthBusy(false) }
   }
 
   const renderHome = () => (
@@ -497,7 +508,7 @@ const App = () => {
           <p>Signed in as <strong>{session.user.email}</strong>.</p>
           <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
           <div className="account-actions">
-            <button type="button" disabled={messages.length === 0} onClick={async () => {
+            <button type="button" disabled={authBusy || messages.length === 0} onClick={() => void runAccountAction(async () => {
               try {
                 const backupKey = localAccountKey('ai_friendship_cloud_conversation_id', session)
                 const backupId = safeLocalStorageGet(backupKey, '') || crypto.randomUUID()
@@ -505,19 +516,19 @@ const App = () => {
                 await backupConversation(session, 'AI Aurora conversation', chatMode, messages, backupId)
                 setAuthStatus('Conversation backed up to your cloud account.')
               } catch { setAuthStatus('Cloud conversation backup failed. Your local data is unchanged.') }
-            }}>Back up conversation</button>
-            <button type="button" onClick={async () => {
+            })}>Back up conversation</button>
+            <button type="button" disabled={authBusy || memoryItems.length === 0} onClick={() => void runAccountAction(async () => {
               try {
                 await backupMemoryItems(session, memoryItems)
                 setAuthStatus('Approved memory backed up to your cloud account.')
               } catch { setAuthStatus('Cloud memory backup failed. Your local data is unchanged.') }
-            }}>Back up approved memory</button>
-            <button type="button" onClick={async () => {
+            })}>Back up approved memory</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
               await signOut(session)
               activateSession(null)
               setAuthStatus('Signed out.')
-            }}>Sign out</button>
-            <button className="danger" type="button" onClick={async () => {
+            })}>Sign out</button>
+            <button className="danger" type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
               const confirmed = window.confirm('Permanently delete this AI Aurora account and its cloud data?')
               if (!confirmed) return
               try {
@@ -526,7 +537,7 @@ const App = () => {
                 activateSession(null)
                 setAuthStatus('Account deleted.')
               } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
-            }}>Delete account permanently</button>
+            })}>Delete account permanently</button>
           </div>
           {authStatus && <p className="small" role="status">{authStatus}</p>}
         </>
@@ -535,18 +546,18 @@ const App = () => {
           <label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} /></label>
           <label>Password<input type="password" autoComplete="current-password" minLength={8} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>
           <div className="starters">
-            <button type="button" onClick={async () => {
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
               try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Signed in.') } }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
-            }}>Sign in</button>
-            <button type="button" disabled={!adultAccess} onClick={async () => {
+            })}>Sign in</button>
+            <button type="button" disabled={authBusy || !adultAccess} onClick={() => void runAccountAction(async () => {
               try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Registration failed.') }
-            }}>Create account</button>
-            <button type="button" onClick={async () => {
+            })}>Create account</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
               try { await requestPasswordReset(authEmail.trim()); setAuthStatus('If that account exists, recovery instructions have been requested.') }
               catch { setAuthStatus('Unable to request recovery right now.') }
-            }}>Forgot password</button>
+            })}>Forgot password</button>
           </div>
           {authStatus && <p className="small" role="status">{authStatus}</p>}
         </>
