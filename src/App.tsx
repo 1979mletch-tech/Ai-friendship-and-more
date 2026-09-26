@@ -13,6 +13,8 @@ type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '
 type ChatMode = 'general' | 'creative'
 type CompanionProfile = { name: string; tone: 'warm' | 'calm' | 'upbeat'; interests: string }
 
+type Conversation = { id: string; title: string; createdAt: string }
+
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -35,6 +37,8 @@ const STORAGE_KEYS = {
   notes: 'ai_friendship_project_notes',
   companion: 'ai_friendship_companion_profile',
   session: 'ai_friendship_session',
+  conversations: 'ai_friendship_conversations',
+  activeConversation: 'ai_friendship_active_conversation',
 }
 
 const parseRoute = (): Route => {
@@ -72,6 +76,8 @@ const App = () => {
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [companion, setCompanion] = useState<CompanionProfile>(() => safeLocalStorageGet(STORAGE_KEYS.companion, { name: 'Friend', tone: 'warm', interests: '' }))
   const [input, setInput] = useState('')
+  const [conversations, setConversations] = useState<Conversation[]>(() => safeLocalStorageGet(STORAGE_KEYS.conversations, []))
+  const [activeConversationId, setActiveConversationId] = useState<string>(() => safeLocalStorageGet(STORAGE_KEYS.activeConversation, 'default'))
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(STORAGE_KEYS.messages, []),
   )
@@ -133,9 +139,24 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.conversations, conversations), [conversations])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.activeConversation, activeConversationId), [activeConversationId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
   useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
+
+  const newConversation = () => {
+    const id = crypto.randomUUID()
+    setConversations((current) => [{ id, title: 'New conversation', createdAt: new Date().toISOString() }, ...current])
+    setActiveConversationId(id)
+    setMessages([])
+    window.location.hash = '/chat'
+  }
+
+  const deleteConversation = (id: string) => {
+    setConversations((current) => current.filter((item) => item.id !== id))
+    if (activeConversationId === id) { setMessages([]); setActiveConversationId('default') }
+  }
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
@@ -143,6 +164,11 @@ const App = () => {
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
     const response = createCompanionReply(userText, chatMode)
+    if (!conversations.some((item) => item.id === activeConversationId)) {
+      setConversations((current) => [{ id: activeConversationId, title: userText.slice(0, 48) || 'Conversation', createdAt: new Date().toISOString() }, ...current])
+    } else {
+      setConversations((current) => current.map((item) => item.id === activeConversationId && item.title === 'New conversation' ? { ...item, title: userText.slice(0, 48) } : item))
+    }
 
     const localDayKey = getLocalDayKey(new Date())
 
@@ -283,6 +309,8 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>{companion.name || 'Friend'} — Companion Chat</h2>
+      <div className="starters"><button type="button" onClick={newConversation}>New conversation</button></div>
+      {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" onClick={() => deleteConversation(item.id)}>Delete</button></li>)}</ul></div>}
       <p className="small">{disclosureText}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
