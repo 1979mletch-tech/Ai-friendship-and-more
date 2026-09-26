@@ -7,6 +7,7 @@ const headers = (session: AuthSession) => {
   return { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json' }
 }
 const endpoint = (table: CloudTable, query = '') => readCloudConfig().supabaseUrl + '/rest/v1/' + table + query
+const ownRows = (userId: string) => 'user_id=eq.' + encodeURIComponent(userId)
 const ensureOk = async (response: Response) => {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
@@ -16,8 +17,9 @@ const ensureOk = async (response: Response) => {
 }
 export const listUserRows = async <T>(session: AuthSession, table: 'conversations' | 'memories'): Promise<T[]> => {
   const active = await ensureFreshSession(session)
-  const response = await ensureOk(await fetch(endpoint(table, '?select=*&order=updated_at.desc'), { headers: headers(active) }))
-  return response.json()
+  const response = await ensureOk(await fetch(endpoint(table, '?select=*&' + ownRows(active.user.id) + '&order=updated_at.desc'), { headers: headers(active) }))
+  const rows = (await response.json()) as Array<T & { user_id?: string }>
+  return rows.filter((row) => row.user_id === active.user.id)
 }
 export const insertUserRow = async <T extends Record<string, unknown>>(session: AuthSession, table: 'conversations' | 'memories', row: T) => {
   const active = await ensureFreshSession(session)
@@ -26,12 +28,12 @@ export const insertUserRow = async <T extends Record<string, unknown>>(session: 
 }
 export const updateUserRow = async <T extends Record<string, unknown>>(session: AuthSession, table: 'conversations' | 'memories', id: string, patch: T) => {
   const active = await ensureFreshSession(session)
-  const response = await ensureOk(await fetch(endpoint(table, '?id=eq.' + encodeURIComponent(id)), { method: 'PATCH', headers: { ...headers(active), Prefer: 'return=representation' }, body: JSON.stringify({ ...patch, user_id: active.user.id }) }))
+  const response = await ensureOk(await fetch(endpoint(table, '?id=eq.' + encodeURIComponent(id) + '&' + ownRows(active.user.id)), { method: 'PATCH', headers: { ...headers(active), Prefer: 'return=representation' }, body: JSON.stringify({ ...patch, user_id: active.user.id }) }))
   return response.json()
 }
 export const deleteUserRow = async (session: AuthSession, table: 'conversations' | 'memories', id: string) => {
   const active = await ensureFreshSession(session)
-  await ensureOk(await fetch(endpoint(table, '?id=eq.' + encodeURIComponent(id)), { method: 'DELETE', headers: headers(active) }))
+  await ensureOk(await fetch(endpoint(table, '?id=eq.' + encodeURIComponent(id) + '&' + ownRows(active.user.id)), { method: 'DELETE', headers: headers(active) }))
 }
 export type CloudProfile = {
   user_id: string
@@ -43,9 +45,9 @@ export type CloudProfile = {
 }
 export const getProfile = async (session: AuthSession): Promise<CloudProfile | null> => {
   const active = await ensureFreshSession(session)
-  const response = await ensureOk(await fetch(endpoint('profiles', '?select=*&user_id=eq.' + encodeURIComponent(active.user.id)), { headers: headers(active) }))
+  const response = await ensureOk(await fetch(endpoint('profiles', '?select=*&' + ownRows(active.user.id)), { headers: headers(active) }))
   const rows = (await response.json()) as CloudProfile[]
-  return rows[0] || null
+  return rows.find((row) => row.user_id === active.user.id) || null
 }
 export const saveProfile = async (session: AuthSession, profile: Pick<CloudProfile, 'companion_name' | 'tone' | 'interests' | 'memory_enabled'>): Promise<CloudProfile | null> => {
   const active = await ensureFreshSession(session)
