@@ -17,6 +17,7 @@ import { memoryApi } from './services/memoryApi'
 import { privacyApi } from './services/privacyApi'
 import { loadRemoteConversations } from './services/conversationSync'
 import { conversationApi } from './services/conversationApi'
+import { syncLabel, type SyncState } from './utils/syncState'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -86,7 +87,7 @@ const App = () => {
   const [chatError, setChatError] = useState('')
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState('')
-  const [syncStatus, setSyncStatus] = useState<'local'|'syncing'|'synced'|'error'>('local')
+  const [syncStatus, setSyncStatus] = useState<SyncState>('local')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
