@@ -25,6 +25,7 @@ import { syncLabel, type SyncState } from './utils/syncState'
 import { settledValue, syncFromOutcomes } from './utils/partialHydration'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { nextConversationId, replaceConversation } from './utils/conversationState'
+import { shouldCreateRemoteConversation } from './utils/conversationOrigin'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
@@ -201,7 +202,7 @@ const App = () => {
     const env = readAppEnv()
     if (session && env.authMode === 'server' && env.apiBaseUrl) {
       setChatBusy(true)
-      try { const created = await conversationApi.create(session); setConversations((current) => [newLocalConversation(created.id), ...current]); setActiveConversationId(created.id) }
+      try { const created = await conversationApi.create(session); setConversations((current) => [newLocalConversation(created.id,'remote'), ...current]); setActiveConversationId(created.id) }
       catch (error) { setChatError(userSafeError(error,'A new conversation could not be created.')) }
       finally { setChatBusy(false) }
     } else { const id = crypto.randomUUID(); setConversations((current) => [newLocalConversation(id), ...current]); setActiveConversationId(id) }
@@ -210,7 +211,8 @@ const App = () => {
 
   const deleteConversation = async (id: string) => {
     const env = readAppEnv(); setChatError('')
-    if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await conversationApi.remove(session,id) } catch(error) { setChatError(userSafeError(error,'Conversation could not be deleted.')); return } }
+    const target=conversations.find((item)=>item.id===id)
+    if (session && env.authMode === 'server' && env.apiBaseUrl && target?.origin==='remote') { try { await conversationApi.remove(session,id) } catch(error) { setChatError(userSafeError(error,'Conversation could not be deleted.')); return } }
     setConversations((current) => { if (activeConversationId === id) setActiveConversationId(nextConversationId(current,id,activeConversationId)); return current.filter((item) => item.id !== id) })
   }
 
@@ -229,7 +231,8 @@ const App = () => {
       const env = readAppEnv()
       if (session && env.authMode === 'server' && env.apiBaseUrl) {
         let serverConversationId = activeConversationId
-        if (!conversations.some((item) => item.id === activeConversationId)) {
+        const activeConversation=conversations.find((item)=>item.id===activeConversationId)
+        if (!activeConversation || shouldCreateRemoteConversation(activeConversation.origin??'local',syncStatus==='synced')) {
           const created = await conversationApi.create(session)
           serverConversationId = created.id
           persistedConversationId = created.id
@@ -246,7 +249,7 @@ const App = () => {
     }
     setConversations((current) => {
       const effectiveId = persistedConversationId
-      const existing = current.find((item) => item.id === effectiveId) || newLocalConversation(effectiveId)
+      const existing = current.find((item) => item.id === effectiveId) || newLocalConversation(effectiveId, session && readAppEnv().authMode === 'server' ? 'remote' : 'local')
       const updated = appendExchange(existing, userText, response)
       return replaceConversation(current, updated, activeConversationId)
     })
