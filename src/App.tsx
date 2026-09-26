@@ -186,16 +186,23 @@ const App = () => {
     return () => { mounted = false }
   }, [session])
 
-  const newConversation = () => {
-    const id = crypto.randomUUID()
-    setConversations((current) => [newLocalConversation(id), ...current])
-    setActiveConversationId(id)
+  const newConversation = async () => {
+    if (chatBusy) return
+    setChatError('')
+    const env = readAppEnv()
+    if (session && env.authMode === 'server' && env.apiBaseUrl) {
+      setChatBusy(true)
+      try { const created = await conversationApi.create(session); setConversations((current) => [newLocalConversation(created.id), ...current]); setActiveConversationId(created.id) }
+      catch (error) { setChatError(error instanceof Error ? error.message : 'A new conversation could not be created.') }
+      finally { setChatBusy(false) }
+    } else { const id = crypto.randomUUID(); setConversations((current) => [newLocalConversation(id), ...current]); setActiveConversationId(id) }
     window.location.hash = '/chat'
   }
 
-  const deleteConversation = (id: string) => {
-    setConversations((current) => current.filter((item) => item.id !== id))
-    if (activeConversationId === id) { setActiveConversationId('default') }
+  const deleteConversation = async (id: string) => {
+    const env = readAppEnv(); setChatError('')
+    if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await conversationApi.remove(session,id) } catch(error) { setChatError(error instanceof Error?error.message:'Conversation could not be deleted.'); return } }
+    setConversations((current) => current.filter((item) => item.id !== id)); if (activeConversationId === id) setActiveConversationId('default')
   }
 
   const sendMessage = async () => {
@@ -393,8 +400,8 @@ const App = () => {
     <section className="panel">
       <h2>{companion.name || 'Friend'} — Companion Chat</h2>
       <p className="small" aria-live="polite">Data mode: {syncLabel(syncStatus)}</p>
-      <div className="starters"><button type="button" onClick={newConversation}>New conversation</button></div>
-      {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" onClick={() => deleteConversation(item.id)}>Delete</button></li>)}</ul></div>}
+      <div className="starters"><button type="button" onClick={() => { void newConversation() }}>New conversation</button></div>
+      {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" onClick={() => { void deleteConversation(item.id) }}>Delete</button></li>)}</ul></div>}
       <p className="small">{disclosureText}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
