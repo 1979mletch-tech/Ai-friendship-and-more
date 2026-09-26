@@ -2,6 +2,7 @@
 // Secrets: OPENAI_API_KEY, OPENAI_MODEL. Never expose these in VITE_* variables.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { crisisReply, dependencyReply, isCrisis, isDependencyRisk, screenReply } from './policy.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || '*',
@@ -29,9 +30,9 @@ Deno.serve(async (req) => {
 
   // Production age assurance must be written to trusted app_metadata by a
   // server-side verification flow. Client-editable user metadata is never trusted.
-  const requireAdultVerification = Deno.env.get('AGE_ASSURANCE_REQUIRED') === 'true'
+  const previewWithoutVerification = Deno.env.get('PREVIEW_ALLOW_UNVERIFIED_ADULTS') === 'true'
   const adultVerified = user.app_metadata?.adult_verified === true
-  if (requireAdultVerification && !adultVerified) {
+  if (!previewWithoutVerification && !adultVerified) {
     return json({ error: 'Adult eligibility verification required' }, 403)
   }
 
@@ -44,14 +45,11 @@ Deno.serve(async (req) => {
     role: item?.role === 'assistant' ? 'assistant' : 'user',
     content: typeof item?.text === 'string' ? item.text.trim().slice(0, 2000) : '',
   })).filter((item: any) => item.content)
-  if (!messages.length) return json({ error: 'No valid messages' }, 400)
+  if (!messages.length || messages[messages.length - 1].role !== 'user') return json({ error: 'A user message is required last' }, 400)
 
   const latest = [...messages].reverse().find((m: any) => m.role === 'user')?.content || ''
-  const highRisk = /\b(i want to die|kill myself|end my life|suicid(?:e|al)|self[-\s]?harm|hurt (?:someone|others|somebody))\b/i.test(latest)
-  if (highRisk) return json({
-    reply: 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis service in your region.',
-    safetyFlag: true,
-  })
+  if (isCrisis(latest)) return json({ reply: crisisReply, safetyFlag: true })
+  if (isDependencyRisk(latest)) return json({ reply: dependencyReply, safetyFlag: true })
 
   const key = Deno.env.get('OPENAI_API_KEY')
   if (!key) return json({ error: 'AI provider is not configured' }, 503)
@@ -71,7 +69,8 @@ Deno.serve(async (req) => {
   if (reservationError) return json({ error: 'AI request limit is temporarily unavailable' }, 503)
   if (!reserved) return json({ error: 'Too many requests. Please wait a moment.' }, 429)
 
-  const ai = await fetch('https://api.openai.com/v1/chat/completions', {
+  let ai: Response
+  try { ai = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -80,10 +79,12 @@ Deno.serve(async (req) => {
       temperature: 0.7,
       max_tokens: 700,
     }),
-  })
+    signal: AbortSignal.timeout(20_000),
+  }) } catch { return json({ error: 'AI provider unavailable' }, 502) }
   if (!ai.ok) return json({ error: 'AI provider unavailable' }, 502)
-  const payload = await ai.json()
+  const payload = await ai.json().catch(() => null)
   const reply = payload?.choices?.[0]?.message?.content
   if (typeof reply !== 'string' || !reply.trim()) return json({ error: 'Invalid AI response' }, 502)
-  return json({ reply: reply.trim(), mode: 'live' })
+  const screened = screenReply(reply.trim())
+  return json({ reply: screened, mode: 'live', safetyFlag: screened !== reply.trim() })
 })
