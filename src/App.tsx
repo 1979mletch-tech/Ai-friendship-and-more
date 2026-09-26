@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { accountApi } from './services/account'
+import type { Account } from './services/account'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive' | '/account'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -33,7 +35,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive' || hash === '/account') {
     return hash
   }
   return '/'
@@ -53,6 +55,12 @@ const getLocalDayKey = (date: Date): string => {
 
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
+  const [account, setAccount] = useState<Account | null>(null)
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountPassword, setAccountPassword] = useState('')
+  const [accountError, setAccountError] = useState('')
+  const [accountBusy, setAccountBusy] = useState(false)
+  const [serverMessages, setServerMessages] = useState<ChatMessage[]>([])
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -64,6 +72,7 @@ const App = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(STORAGE_KEYS.messages, []),
   )
+  const visibleMessages = account ? serverMessages : messages
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -82,7 +91,7 @@ const App = () => {
     [planId, projectNotes],
   )
   const today = getLocalDayKey(new Date())
-  const todayUserMessages = messages.filter(
+  const todayUserMessages = visibleMessages.filter(
     (message) =>
       message.role === 'user' &&
       (message.dayKey ||
@@ -93,6 +102,15 @@ const App = () => {
     const onHash = () => setRoute(parseRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  useEffect(() => {
+    accountApi.me().then(({ user }) => {
+      if (user) {
+        setAccount(user)
+        accountApi.messages().then(({ messages }) => setServerMessages(messages)).catch(() => setAccountError('Could not load account history'))
+      }
+    }).catch(() => { /* API is optional during static preview */ })
   }, [])
 
   useEffect(() => {
@@ -124,7 +142,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
     const crisis = isCrisisText(userText)
@@ -138,24 +156,24 @@ const App = () => {
 
     const localDayKey = getLocalDayKey(new Date())
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: response,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-    ])
-    setInput('')
+    if (account) {
+      try {
+        const first = await accountApi.saveMessage('user', userText)
+        setServerMessages((current) => [...current, first.message])
+        setInput('')
+        const second = await accountApi.saveMessage('assistant', response)
+        setServerMessages((current) => [...current, second.message])
+      } catch (error) {
+        setAccountError(error instanceof Error ? error.message : 'Message could not be saved')
+      }
+    } else {
+      setMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: 'user', text: userText, createdAt: new Date().toISOString(), dayKey: localDayKey },
+        { id: crypto.randomUUID(), role: 'assistant', text: response, createdAt: new Date().toISOString(), dayKey: localDayKey },
+      ])
+      setInput('')
+    }
   }
 
   const addProjectNote = () => {
@@ -177,7 +195,7 @@ const App = () => {
   }
 
   const exportLocalData = () => {
-    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages, projectNotes }, null, 2)
+    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages: visibleMessages, projectNotes }, null, 2)
     const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url
@@ -187,6 +205,53 @@ const App = () => {
     link.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+
+  const authenticate = async (action: 'login' | 'register') => {
+    setAccountBusy(true)
+    setAccountError('')
+    try {
+      const { user } = await accountApi[action](accountEmail, accountPassword)
+      const { messages: saved } = await accountApi.messages()
+      setAccount(user)
+      setServerMessages(saved)
+      setAccountPassword('')
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'Account request failed. Start the API server to use accounts.')
+    } finally {
+      setAccountBusy(false)
+    }
+  }
+
+  const renderAccount = () => (
+    <section className="panel">
+      <h2>Account</h2>
+      {account ? (
+        <>
+          <p>Signed in as {account.email}. Your chat history is stored in your account on this server. Local project notes remain in this browser.</p>
+          <button type="button" onClick={async () => {
+            try { await accountApi.logout(); setAccount(null); setServerMessages([]) }
+            catch { setAccountError('Could not sign out') }
+          }}>Sign out</button>
+          <button type="button" onClick={async () => {
+            if (!window.confirm('Delete this account and all its saved messages?')) return
+            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]) }
+            catch { setAccountError('Could not delete account') }
+          }}>Delete account and saved messages</button>
+        </>
+      ) : (
+        <>
+          <p>Create an account or sign in to keep chat history on the configured server. Local notes are still browser-only.</p>
+          <label>Email <input type="email" autoComplete="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} /></label>
+          <label>Password <input type="password" autoComplete="current-password" value={accountPassword} onChange={(e) => setAccountPassword(e.target.value)} /></label>
+          <div className="starters">
+            <button type="button" disabled={accountBusy} onClick={() => authenticate('login')}>Sign in</button>
+            <button type="button" disabled={accountBusy} onClick={() => authenticate('register')}>Create account</button>
+          </div>
+        </>
+      )}
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
+    </section>
+  )
 
   const renderHome = () => (
     <section className="panel">
@@ -222,6 +287,7 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
+      <p className="small">{account ? `Signed in as ${account.email}; chat history is saved to this server.` : 'Guest chat is stored only in this browser. Sign in on the Account page for server-backed history.'}</p>
       <p className="small">{disclosureText}</p>
       <p className="small">{crisisGuidance}</p>
       <label className="consent">
@@ -250,11 +316,11 @@ const App = () => {
       )}
 
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <p className="small">No messages yet. Start with a topic starter or your own question.</p>
         ) : (
           <ul>
-            {messages.map((msg) => (
+            {visibleMessages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
                 <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
               </li>
@@ -372,7 +438,7 @@ const App = () => {
       <h2>Privacy Centre</h2>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>This browser app has no live AI service or account database. Chat uses fixed local responses; messages and notes remain in this browser unless you clear them.</li>
+        <li>Chat uses fixed responses, not a live AI service. Guest chat and project notes stay in this browser. When signed in, chat history is stored on the configured server.</li>
         <li>Never enter provider secrets into browser environment variables.</li>
         <li>You can export or clear your local chat and creative notes at any time. Store exported files securely.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
@@ -386,8 +452,13 @@ const App = () => {
         provider data-processing/legal review.
       </p>
       <div className="starters">
-        <button type="button" onClick={exportLocalData}>Export my local data (JSON)</button>
-        <button type="button" onClick={() => setMessages([])}>Delete local chat history</button>
+        <button type="button" onClick={exportLocalData}>Export my chat and local notes (JSON)</button>
+        <button type="button" onClick={async () => {
+          if (account) {
+            try { await accountApi.deleteMessages(); setServerMessages([]) }
+            catch { setAccountError('Could not delete saved messages') }
+          } else setMessages([])
+        }}>Delete {account ? 'saved' : 'local'} chat history</button>
         <button type="button" onClick={() => setProjectNotes([])}>Delete local project notes</button>
         <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
       </div>
@@ -443,6 +514,9 @@ const App = () => {
     case '/immersive':
       page = renderImmersive()
       break
+    case '/account':
+      page = renderAccount()
+      break
     default:
       page = renderHome()
       break
@@ -457,6 +531,7 @@ const App = () => {
           <a href="#/chat">Chat</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
+          <a href="#/account">Account</a>
           <a href="#/immersive">Immersive</a>
         </nav>
       </header>

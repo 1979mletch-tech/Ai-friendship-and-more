@@ -27,12 +27,14 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - minimal-data principles
   - provider processing disclosure
 - Consent/disclosure control before active chat
+- Optional server-backed email/password accounts with private chat history and account deletion when the API is running
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
 
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
-- Real AI chat, authentication, account-scoped persistent data, and database migrations (the current chat uses fixed local responses)
+- Real AI chat and production identity features (password reset, email verification, multi-device session management); the current chat still uses fixed responses
+- Production database deployment, backups, migration process, and hosted API configuration
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
 - Server-verified entitlements and anti-abuse limits
 - Production security review, access control model, logging policy, and retention policy
@@ -71,8 +73,13 @@ Future boundary:
 
 ```bash
 npm install
-npm run dev
+npm run dev:api # terminal 1, API on localhost:3001
+npm run dev     # terminal 2, website on Vite's local port
 ```
+
+The API creates `data/ai-friendship.sqlite` on first start. Set `DATABASE_PATH` to an absolute persistent location for deployment. The API binds to `127.0.0.1` and expects a same-origin reverse proxy for `/api`; configure HTTPS and `NODE_ENV=production` before exposing it. Cookies are HttpOnly, SameSite=Lax, and Secure in production. The Vite dev server proxies `/api` to the local API. Guest chat and project notes remain browser-only. No AI provider or Stripe secret is needed for this phase.
+
+This account foundation has not had a production security audit. Before a public deployment, add password recovery and email verification, durable rate limiting, migrations and backups, and deployment checks for the proxy, HTTPS, and privacy policy.
 
 ## Quality checks
 
