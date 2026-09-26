@@ -1,3 +1,3 @@
-import type{Session}from'./apiClient';import{conversationApi}from'./conversationApi';import{classifySafetyText,safetyResponse}from'../utils/safety'
+import type{Session}from'./apiClient';import{conversationApi}from'./conversationApi';import{classifySafetyText,safetyResponse}from'../utils/safety';import{validateGeneratedReply}from'../utils/outputPolicy'
 export type ServerReplyInput={session:Session;conversationId:string;text:string;mode:'general'|'creative'}
-export const getSafeServerReply=async(input:ServerReplyInput):Promise<string>=>{const safety=safetyResponse(classifySafetyText(input.text));if(safety)return safety;return(await conversationApi.append(input.session,input.conversationId,input.text,input.mode)).reply}
+export const getSafeServerReply=async(input:ServerReplyInput):Promise<string>=>{const safety=safetyResponse(classifySafetyText(input.text));if(safety)return safety;const generated=(await conversationApi.append(input.session,input.conversationId,input.text,input.mode)).reply;return validateGeneratedReply({userText:input.text,generatedText:generated})??'I could not safely complete that reply. Please try a different topic.'}
