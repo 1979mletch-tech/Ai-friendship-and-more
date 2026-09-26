@@ -17,6 +17,7 @@ import { memoryApi } from './services/memoryApi'
 import { privacyApi } from './services/privacyApi'
 import { loadRemoteConversations } from './services/conversationSync'
 import { conversationApi } from './services/conversationApi'
+import { getSafeServerReply } from './services/safeServerReply'
 import { syncLabel, type SyncState } from './utils/syncState'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
@@ -215,7 +216,7 @@ const App = () => {
           persistedConversationId = created.id
           setActiveConversationId(created.id)
         }
-        response = (await conversationApi.append(session, serverConversationId, userText, chatMode)).reply
+        response = await getSafeServerReply({ session, conversationId: serverConversationId, text: userText, mode: chatMode })
       } else {
         response = await getCompanionReply({ text: userText, mode: chatMode, session, conversationId: activeConversationId })
       }
