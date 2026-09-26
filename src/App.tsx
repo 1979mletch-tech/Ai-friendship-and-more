@@ -8,13 +8,15 @@ import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from
 import { hasCloudAuth } from './config/cloud'
 import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
 import { sendCloudChat } from './services/chatService'
-import { backupConversation, backupMemoryItems } from './services/cloudSyncServiceV2'
+import { backupConversation, backupMemoryItems, deleteCloudConversation, deleteCloudMemory, loadCloudConversations, loadCloudMemories, type CloudConversationRow, type CloudMemoryRow } from './services/cloudSyncServiceV2'
+import { getProfile } from './services/cloudDataService'
 import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
 import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
 import { previewActivePlan } from './utils/planGuard'
 import { ChatRequestGate } from './utils/chatRequestGate'
 import { removeHistoryTurn } from './utils/history'
+import { sanitizeImportedMessages } from './utils/conversationImport'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -65,6 +67,8 @@ const App = () => {
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('')
+  const [cloudConversations, setCloudConversations] = useState<CloudConversationRow[] | null>(null)
+  const [cloudMemories, setCloudMemories] = useState<CloudMemoryRow[] | null>(null)
   const [authBusy, setAuthBusy] = useState(false)
   const authBusyRef = useRef(false)
   const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
@@ -226,6 +230,8 @@ const App = () => {
     chatGate.current.invalidate()
     setIsSending(false)
     setChatStatus('')
+    setCloudConversations(null)
+    setCloudMemories(null)
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
     setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
@@ -471,7 +477,7 @@ const App = () => {
           <li key={item}><span>{item}</span><button type="button" onClick={() => setMemoryItems((current) => current.filter((value) => value !== item))}>Forget</button></li>
         ))}</ul>
       )}
-      <button type="button" onClick={() => setMemoryItems([])}>Clear all memory</button>
+      <button type="button" onClick={() => { if (window.confirm('Clear memory saved in this browser? Cloud memories must be deleted separately in Account.')) setMemoryItems([]) }}>Clear local memory</button>
     </section>
   )
 
@@ -484,7 +490,7 @@ const App = () => {
       </label>
       <p className="small">AI Aurora always remains clearly identified as AI even when you choose a companion name.</p>
       <h3>Data controls</h3>
-      <p className="small">Deleting local data removes this {session ? 'account’s' : 'guest’s'} chat, project notes and memory from this browser. Any cloud backup must be deleted separately by deleting the account.</p>
+      <p className="small">Deleting local data removes this {session ? 'account’s' : 'guest’s'} chat, project notes and memory from this browser. Review or delete cloud backups separately in Account.</p>
       <div className="account-actions">
         <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
           messages, memory: memoryItems, projectNotes, companionName,
@@ -524,6 +530,25 @@ const App = () => {
               } catch { setAuthStatus('Cloud memory backup failed. Your local data is unchanged.') }
             })}>Back up approved memory</button>
             <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const [conversations, memories] = await Promise.all([loadCloudConversations(session), loadCloudMemories(session)])
+                setCloudConversations(conversations)
+                setCloudMemories(memories)
+                setAuthStatus(`Loaded ${conversations.length} cloud conversations and ${memories.length} cloud memories.`)
+              } catch { setAuthStatus('Could not load cloud data. Please try again.') }
+            })}>Review cloud data</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const [conversations, memories, profile] = await Promise.all([loadCloudConversations(session), loadCloudMemories(session), getProfile(session)])
+                downloadJson('ai-friendship-account-export.json', {
+                  product: 'AI Friendship', exportedAt: new Date().toISOString(),
+                  local: createExportBundle({ messages, memory: memoryItems, projectNotes, companionName }),
+                  cloud: { conversations, memories, profile },
+                })
+                setAuthStatus('Account data export downloaded to this device.')
+              } catch { setAuthStatus('Account export failed. No partial export was downloaded.') }
+            })}>Export cloud + local data</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
               await signOut(session)
               activateSession(null)
               setAuthStatus('Signed out.')
@@ -539,6 +564,30 @@ const App = () => {
               } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
             })}>Delete account permanently</button>
           </div>
+          {cloudConversations && <section aria-label="Cloud conversations"><h3>Cloud conversations</h3>{cloudConversations.length === 0 ? <p>None saved.</p> : <ul>{cloudConversations.map((row) => <li key={row.id}><span>{row.title} ({Array.isArray(row.messages) ? row.messages.length : 0} messages)</span> <button type="button" disabled={authBusy} onClick={() => {
+            const restored = sanitizeImportedMessages(row.messages)
+            if (!restored.length) { setAuthStatus('This cloud conversation has no valid messages to restore.'); return }
+            if (!window.confirm('Replace local conversation history with this cloud backup? Export local data first if you want to keep it.')) return
+            chatGate.current.invalidate()
+            setIsSending(false)
+            setMessages(restored)
+            setChatMode(row.mode === 'creative' ? 'creative' : 'general')
+            safeLocalStorageSet(localAccountKey('ai_friendship_cloud_conversation_id', session), row.id)
+            setAuthStatus('Cloud conversation restored to this browser.')
+          }}>Restore to browser</button> <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+            if (!window.confirm(`Delete cloud conversation “${row.title}”?`)) return
+            try { await deleteCloudConversation(session, row.id); setCloudConversations((current) => current?.filter((item) => item.id !== row.id) ?? null); setAuthStatus('Cloud conversation deleted.') }
+            catch { setAuthStatus('Cloud conversation deletion failed.') }
+          })}>Delete cloud conversation</button></li>)}</ul>}</section>}
+          {cloudMemories && <section aria-label="Cloud memories"><h3>Cloud memories</h3>{cloudMemories.length === 0 ? <p>None saved.</p> : <ul>{cloudMemories.map((row) => <li key={row.id}><span>{row.value}</span> <button type="button" disabled={authBusy} onClick={() => {
+            if (typeof row.value !== 'string' || !row.value.trim()) { setAuthStatus('This cloud memory is invalid.'); return }
+            setMemoryItems((current) => [...new Set([...current, row.value.trim().slice(0, 240)])].slice(-50))
+            setAuthStatus('Memory restored to this browser.')
+          }}>Add to local memory</button> <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+            if (!window.confirm('Delete this saved cloud memory?')) return
+            try { await deleteCloudMemory(session, row.id); setCloudMemories((current) => current?.filter((item) => item.id !== row.id) ?? null); setAuthStatus('Cloud memory deleted.') }
+            catch { setAuthStatus('Cloud memory deletion failed.') }
+          })}>Delete cloud memory</button></li>)}</ul>}</section>}
           {authStatus && <p className="small" role="status">{authStatus}</p>}
         </>
       ) : (
