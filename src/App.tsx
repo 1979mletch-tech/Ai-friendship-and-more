@@ -23,6 +23,7 @@ import { conversationApi } from './services/conversationApi'
 import { getSafeServerReply } from './services/safeServerReply'
 import { syncLabel, type SyncState } from './utils/syncState'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
+import { nextConversationId, replaceConversation } from './utils/conversationState'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
@@ -210,7 +211,7 @@ const App = () => {
   const deleteConversation = async (id: string) => {
     const env = readAppEnv(); setChatError('')
     if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await conversationApi.remove(session,id) } catch(error) { setChatError(userSafeError(error,'Conversation could not be deleted.')); return } }
-    setConversations((current) => current.filter((item) => item.id !== id)); if (activeConversationId === id) setActiveConversationId('default')
+    setConversations((current) => { if (activeConversationId === id) setActiveConversationId(nextConversationId(current,id,activeConversationId)); return current.filter((item) => item.id !== id) })
   }
 
   const sendMessage = async () => {
@@ -247,7 +248,7 @@ const App = () => {
       const effectiveId = persistedConversationId
       const existing = current.find((item) => item.id === effectiveId) || newLocalConversation(effectiveId)
       const updated = appendExchange(existing, userText, response)
-      return [updated, ...current.filter((item) => item.id !== activeConversationId)]
+      return replaceConversation(current, updated, activeConversationId)
     })
     setInput('')
     setChatBusy(false)
