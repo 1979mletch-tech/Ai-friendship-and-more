@@ -35,14 +35,6 @@ Deno.serve(async (req) => {
     return json({ error: 'Adult eligibility verification required' }, 403)
   }
 
-  const rateWindow = new Date(Date.now() - 60_000).toISOString()
-  const { count } = await supabase
-    .from('ai_usage_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .gte('created_at', rateWindow)
-  if ((count || 0) >= 12) return json({ error: 'Too many requests. Please wait a moment.' }, 429)
-
   let body: any
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON' }, 400) }
   if (!body || !Array.isArray(body.messages)) return json({ error: 'messages must be an array' }, 400)
@@ -75,7 +67,9 @@ Deno.serve(async (req) => {
     'Mode: ' + mode + '. Companion display name: ' + companionName + '.',
   ].join(' ')
 
-  await supabase.from('ai_usage_events').insert({ user_id: user.id })
+  const { data: reserved, error: reservationError } = await supabase.rpc('reserve_ai_request')
+  if (reservationError) return json({ error: 'AI request limit is temporarily unavailable' }, 503)
+  if (!reserved) return json({ error: 'Too many requests. Please wait a moment.' }, 429)
 
   const ai = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
