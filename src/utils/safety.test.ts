@@ -7,6 +7,8 @@ describe('safety helper', () => {
     expect(isCrisisText('I might hurt myself')).toBe(true)
     expect(isCrisisText('I cannot keep myself safe')).toBe(true)
     expect(isCrisisText('I have taken an overdose')).toBe(true)
+    expect(isCrisisText('I am feeling suicidal')).toBe(true)
+    expect(isCrisisText("I can't keep myself safe")).toBe(true)
     expect(isCrisisText('Can you help me write a poem?')).toBe(false)
   })
 

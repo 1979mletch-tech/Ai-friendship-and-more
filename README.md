@@ -44,6 +44,18 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 - Professionally reviewed crisis handling; current keyword detection can miss indirect or nuanced language
 - Future WebXR + Three.js immersive implementation, device testing, and voice/spatial privacy controls
 
+## Cloud account and AI chat (optional deployment)
+
+The `Account & AI chat` screen is separate from browser-only Local Chat. It supports email sign-up/sign-in, password reset, account-scoped conversations and notes, cloud data export, and account deletion. The local chat is **not** automatically copied to the cloud. Cloud chat requires deployment and live integration testing before it is available to users.
+
+1. Create a Supabase project and apply `supabase/migrations/20260926070000_ai_friendship_core.sql` with the Supabase migration workflow. It enables row-level security and a server-enforced free quota.
+2. Configure email authentication and your production redirect URLs in Supabase Auth.
+3. Deploy both `supabase/functions/chat` and `supabase/functions/delete-account` with JWT verification enabled. Set Edge Function secrets `APP_ORIGIN` (exact public site origin), `OPENAI_API_KEY`, and optional `OPENAI_MODEL`. Supabase supplies its project URL, anon/publishable key, and service-role key to the function runtime; verify those names for your deployment.
+4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the website build environment. These are public client values. Never set a secret or service-role key in `VITE_` variables.
+5. Test actual sign-up, email confirmation, password reset, user A/user B isolation, quota, crisis handling, export, and account deletion against a staging Supabase project before enabling public access.
+
+The cloud function stores user and assistant turns in Supabase; it sends recent turns to OpenAI. Deleting the cloud account cascades the app tables in this migration; provider retention and operational logs require a separate privacy review. Local browser data can be deleted independently in Privacy.
+
 ## Billing foundation notes
 
 Current implementation is intentionally safe:

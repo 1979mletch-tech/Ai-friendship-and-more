@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import CloudChat from './cloud/CloudChat'
+import { cloudConfigured } from './cloud/client'
 import { getSubscriptionState } from './services/subscriptionService'
 import { normalizeConversations, searchConversations, titleFromMessage, type ChatMessage, type Conversation } from './utils/conversations'
 import { downloadLocalData } from './utils/export'
@@ -8,7 +10,7 @@ import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlem
 import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/history' | '/setup' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/cloud' | '/history' | '/setup' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 
 type ProjectNote = {
@@ -29,7 +31,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/history' || hash === '/setup' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/cloud' || hash === '/history' || hash === '/setup' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -455,11 +457,12 @@ const App = () => {
       <h2>Privacy Centre</h2>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>This browser app has no live AI service or account database. Chat uses fixed local responses; messages and notes remain in this browser unless you clear them.</li>
+        <li>Local Chat uses fixed responses and saves to this browser. The separate Account & AI chat sends messages to the configured cloud database and AI provider when enabled.</li>
+        <li>{cloudConfigured ? 'Cloud mode is configured. Delete local data here; export or delete cloud data from Account & AI chat.' : 'Cloud mode is not configured. Account & AI chat requires a Supabase project and deployed functions.'}</li>
         <li>Never enter provider secrets into browser environment variables.</li>
         <li>You can clear chat history and creative notes locally at any time.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
-        <li>A future live AI service would send messages to its provider and require updated disclosures.</li>
+        <li>Cloud AI chat sends your messages to the configured AI provider for a response; local Chat does not.</li>
       </ul>
       <p>
         AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
@@ -525,6 +528,9 @@ const App = () => {
     case '/chat':
       page = renderChat()
       break
+    case '/cloud':
+      page = <CloudChat />
+      break
     case '/history':
       page = renderHistory()
       break
@@ -552,6 +558,7 @@ const App = () => {
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
+          <a href="#/cloud">Account & AI chat</a>
           <a href="#/history">History</a>
           <a href="#/setup">Settings</a>
           <a href="#/pricing">Pricing</a>
