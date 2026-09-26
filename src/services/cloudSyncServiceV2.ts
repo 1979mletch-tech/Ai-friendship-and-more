@@ -44,11 +44,6 @@ export const backupMemoryItems = async (session: AuthSession, items: string[]) =
     const match = byValue.get(value.toLocaleLowerCase())
     if (!match) results.push(await insertUserRow(session, 'memories', { label: 'User-approved memory', value }))
   }
-  for (const item of existing) {
-    if (!desired.some((value) => value.toLocaleLowerCase() === item.value.toLocaleLowerCase())) {
-      await deleteUserRow(session, 'memories', item.id)
-    }
-  }
   return results
 }
 export const deleteCloudMemory = (session: AuthSession, id: string) =>
