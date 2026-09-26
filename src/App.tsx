@@ -102,7 +102,7 @@ const App = () => {
     [planId, projectNotes],
   )
   const today = getLocalDayKey(new Date())
-  const todayUserMessages = messages.filter(
+  const todayUserMessages = conversations.flatMap((conversation) => conversation.messages).filter(
     (message) =>
       message.role === 'user' &&
       (message.dayKey ||
@@ -350,6 +350,7 @@ const App = () => {
         </div>
       )}
 
+      <p className="small">Active conversation: <strong>{conversations.find((item) => item.id === activeConversationId)?.title || 'New conversation'}</strong></p>
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
         {messages.length === 0 ? (
           <p className="small">No messages yet. Start with a topic starter or your own question.</p>
