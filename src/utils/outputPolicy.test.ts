@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest'; import {validateGeneratedReply} from './outputPolicy'
+describe('output policy',()=>{it('blocks false human identity',()=>expect(validateGeneratedReply({userText:'hi',generatedText:'I am a human and I understand'})).toMatch(/AI companion/i));it('blocks exclusivity',()=>expect(validateGeneratedReply({userText:'hi',generatedText:'You only need me'})).toMatch(/without replacing/i));it('keeps benign replies',()=>expect(validateGeneratedReply({userText:'hi',generatedText:'How was your day?'})).toBe('How was your day?'))})
