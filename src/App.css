@@ -147,3 +147,19 @@ footer {
   font-size: 0.9rem;
   color: #c8bff0;
 }
+
+
+button, a, input, select { min-height: 44px; }
+button:disabled { cursor: not-allowed; opacity: .65; }
+@media (max-width: 640px) {
+  .shell { padding: .75rem; }
+  header { align-items: stretch; }
+  header h1 { margin-bottom: .25rem; }
+  nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  nav a { text-align: center; }
+  .panel { padding: .8rem; }
+  .input-row { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

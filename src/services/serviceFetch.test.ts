@@ -1,0 +1,2 @@
+import{describe,expect,it,vi}from'vitest';import{serviceFetch}from'./serviceFetch'
+describe('service fetch',()=>{it('does not automatically replay POST writes',async()=>{const f=vi.fn().mockResolvedValue({status:503});vi.stubGlobal('fetch',f);await serviceFetch('/x',{method:'POST'});expect(f).toHaveBeenCalledTimes(1);vi.unstubAllGlobals()});it('returns successful GET',async()=>{const f=vi.fn().mockResolvedValue({status:200});vi.stubGlobal('fetch',f);expect((await serviceFetch('/x')).status).toBe(200);vi.unstubAllGlobals()})})

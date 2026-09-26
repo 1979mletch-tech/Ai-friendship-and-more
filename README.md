@@ -27,10 +27,15 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - minimal-data principles
   - provider processing disclosure
 - Consent/disclosure control before active chat
+- Safety-first companion reply routing for crisis, dependency and sexual-boundary scenarios
+- User-controlled Memory and Settings routes with per-memory and clear-all deletion controls
+- Conversation-history helper foundation with regression tests
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
 
+- Production authentication and server-backed per-user data isolation require a deployed trusted backend; authenticated frontend API contracts are implemented.
+- Real AI-provider generation requires the deployed server/provider secret; safety-first server orchestration and output backstop are implemented.
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
 - Server-verified entitlements and anti-abuse limits
@@ -83,5 +88,9 @@ npm run test
 
 ## Environment setup
 
-Copy `.env.example` to `.env` and fill only the variables you use.
-Never commit secrets.
+Copy `.env.example` to `.env` and fill only browser-safe variables you use. See `docs/ENVIRONMENT.md`.
+Never put AI-provider, database/service-role, session-signing, Stripe secret, webhook, or private keys in `VITE_*` variables. Never commit secrets.
+
+## Verified repository checkpoint
+
+The repository quality workflow runs install, lint, TypeScript checking, unit tests and a production build. A green workflow verifies the exact candidate commit at code level; it does not substitute for live backend, authorization or staging security tests.

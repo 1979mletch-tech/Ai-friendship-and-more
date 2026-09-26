@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{settledValue,syncFromOutcomes}from'./partialHydration'
+describe('partial hydration',()=>{it('preserves successful resources when another fails',()=>{const ok=settledValue({status:'fulfilled',value:['x']});const bad=settledValue({status:'rejected',reason:new Error('x')});expect(ok.value).toEqual(['x']);expect(syncFromOutcomes([ok,bad])).toBe('partial')})})

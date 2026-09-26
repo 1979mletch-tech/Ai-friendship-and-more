@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{migrateConversations}from'./conversationMigration'
+describe('conversation migration',()=>{it('upgrades legacy metadata and attaches legacy messages once',()=>{const msgs=[{id:'m',role:'user' as const,text:'hi',createdAt:'2026-01-01T00:00:00.000Z'}];const r=migrateConversations([{id:'a',title:'A',createdAt:'2026-01-01T00:00:00.000Z'},{id:'b'}],msgs);expect(r[0].messages).toEqual(msgs);expect(r[1].messages).toEqual([]);expect(r[0].updatedAt).toBe(r[0].createdAt);expect(r[0].origin).toBe('local')})})

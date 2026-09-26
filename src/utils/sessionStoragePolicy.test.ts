@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{sessionStorageValue}from'./sessionStoragePolicy'
+describe('session storage policy',()=>{it('rejects malformed persisted sessions',()=>{expect(sessionStorageValue({accessToken:'x'})).toBeNull();expect(sessionStorageValue(null)).toBeNull()});it('accepts complete session shape',()=>{expect(sessionStorageValue({accessToken:'t',user:{id:'u',email:'a@b.co'}})?.user.id).toBe('u')})})

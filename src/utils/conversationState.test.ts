@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{nextConversationId,replaceConversation}from'./conversationState';import{newLocalConversation}from'./chatPersistence'
+describe('conversation state',()=>{it('selects another conversation after active deletion',()=>{const a=newLocalConversation('a'),b=newLocalConversation('b');expect(nextConversationId([a,b],'a','a')).toBe('b')});it('does not duplicate a replacement id',()=>{const a=newLocalConversation('a'),b=newLocalConversation('b');expect(replaceConversation([a,b],b,'a').map(x=>x.id)).toEqual(['b'])})})

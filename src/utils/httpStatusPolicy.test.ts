@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{safeStatusMessage}from'./httpStatusPolicy'
+describe('http status policy',()=>{it('maps auth ownership rate and service errors safely',()=>{expect(safeStatusMessage(401,'x')).toContain('expired');expect(safeStatusMessage(403,'x')).toContain('access');expect(safeStatusMessage(429,'x')).toContain('Too many');expect(safeStatusMessage(503,'x')).toContain('temporarily')})})

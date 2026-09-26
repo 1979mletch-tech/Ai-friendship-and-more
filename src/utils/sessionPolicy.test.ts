@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{isSessionExpired,sessionMessage}from'./sessionPolicy'
+describe('session policy',()=>{it('detects expiry',()=>expect(isSessionExpired({expiresAt:'2026-01-01T00:00:00Z'},new Date('2026-01-02T00:00:00Z'))).toBe(true));it('gives useful auth and rate messages',()=>{expect(sessionMessage(401)).toMatch(/sign in/i);expect(sessionMessage(429)).toMatch(/wait/i)})})

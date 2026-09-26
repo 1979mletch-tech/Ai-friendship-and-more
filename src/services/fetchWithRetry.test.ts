@@ -1,0 +1,2 @@
+import{describe,expect,it,vi}from'vitest';import{fetchWithRetry}from'./fetchWithRetry'
+describe('fetch retry',()=>{it('retries transient 503 and returns success',async()=>{vi.useFakeTimers();const f=vi.fn().mockResolvedValueOnce({status:503}).mockResolvedValueOnce({status:200});vi.stubGlobal('fetch',f);const p=fetchWithRetry('/x',undefined,2);await vi.runAllTimersAsync();expect((await p).status).toBe(200);expect(f).toHaveBeenCalledTimes(2);vi.useRealTimers();vi.unstubAllGlobals()})})

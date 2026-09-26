@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{hydrationPart,hydrationStatus}from'./hydrationState'
+describe('hydration',()=>{it('maps settled results and distinguishes partial state',()=>{expect(hydrationPart({status:'fulfilled',value:1}).ok).toBe(true);expect(hydrationStatus([{ok:true,value:1},{ok:false,error:new Error()}])).toBe('partial');expect(hydrationStatus([{ok:false,error:new Error()}])).toBe('error')})})

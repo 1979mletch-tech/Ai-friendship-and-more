@@ -1,0 +1,2 @@
+import{describe,expect,it,vi}from'vitest';import{sessionLifecycle}from'./sessionLifecycle'
+describe('session lifecycle',()=>{it('distinguishes anonymous active and expired',()=>{vi.setSystemTime(new Date('2026-01-02T00:00:00Z'));expect(sessionLifecycle(undefined)).toBe('anonymous');expect(sessionLifecycle('t')).toBe('active');expect(sessionLifecycle('t','2026-01-01T00:00:00Z')).toBe('expired');vi.useRealTimers()})})
