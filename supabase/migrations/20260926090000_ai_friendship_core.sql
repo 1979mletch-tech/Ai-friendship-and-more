@@ -45,3 +45,8 @@ create policy "memories_select_own" on public.memories for select using (auth.ui
 create policy "memories_insert_own" on public.memories for insert with check (auth.uid() = user_id);
 create policy "memories_update_own" on public.memories for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "memories_delete_own" on public.memories for delete using (auth.uid() = user_id);
+
+-- New Supabase projects do not automatically expose SQL-created tables to the Data API.
+-- Anonymous reads can reach the endpoint but RLS returns no rows.
+grant select on public.conversations, public.memories to anon;
+grant select, insert, update, delete on public.conversations, public.memories to authenticated;
