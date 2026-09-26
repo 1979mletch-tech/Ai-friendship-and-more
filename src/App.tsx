@@ -7,8 +7,9 @@ import { disclosureText } from './utils/safety'
 import { createCompanionReply } from './services/companionService'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
+type CompanionProfile = { name: string; tone: 'warm' | 'calm' | 'upbeat'; interests: string }
 
 type ChatMessage = {
   id: string
@@ -30,11 +31,12 @@ const STORAGE_KEYS = {
   plan: 'ai_friendship_plan',
   messages: 'ai_friendship_messages',
   notes: 'ai_friendship_project_notes',
+  companion: 'ai_friendship_companion_profile',
 }
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/setup' || hash === '/chat' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -59,6 +61,7 @@ const App = () => {
   )
   const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
+  const [companion, setCompanion] = useState<CompanionProfile>(() => safeLocalStorageGet(STORAGE_KEYS.companion, { name: 'Friend', tone: 'warm', interests: '' }))
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(STORAGE_KEYS.messages, []),
@@ -122,6 +125,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
@@ -170,6 +174,28 @@ const App = () => {
     setProjectNotes([])
   }
 
+  const renderSetup = () => (
+    <section className="panel">
+      <h2>Set up your companion</h2>
+      <p>Choose how your AI companion feels to talk with. You can change this later. AI Friendship always remains clearly identified as AI.</p>
+      <div className="grid">
+        <label>Companion name
+          <input value={companion.name} maxLength={30} onChange={(e) => setCompanion({ ...companion, name: e.target.value })} placeholder="Friend" />
+        </label>
+        <label>Conversation tone
+          <select value={companion.tone} onChange={(e) => setCompanion({ ...companion, tone: e.target.value as CompanionProfile['tone'] })}>
+            <option value="warm">Warm</option><option value="calm">Calm</option><option value="upbeat">Upbeat</option>
+          </select>
+        </label>
+      </div>
+      <label>Things you enjoy talking about
+        <textarea value={companion.interests} maxLength={300} onChange={(e) => setCompanion({ ...companion, interests: e.target.value })} placeholder="Music, films, books, everyday life, creative projects…" />
+      </label>
+      <button type="button" onClick={() => { window.location.hash = '/chat' }}>Save & start chatting</button>
+      <p className="small">This setup is stored locally in preview mode. It does not make the companion human or create an exclusive relationship.</p>
+    </section>
+  )
+
   const renderHome = () => (
     <section className="panel">
       <h1>AI Friendship</h1>
@@ -203,7 +229,7 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      <h2>Companion Chat</h2>
+      <h2>{companion.name || 'Friend'} — Companion Chat</h2>
       <p className="small">{disclosureText}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
@@ -439,6 +465,9 @@ const App = () => {
 
   let page = renderHome()
   switch (route) {
+    case '/setup':
+      page = renderSetup()
+      break
     case '/chat':
       page = renderChat()
       break
@@ -468,6 +497,7 @@ const App = () => {
         <h1>AI Friendship V1+</h1>
         <nav>
           <a href="#/">Home</a>
+          <a href="#/setup">Companion setup</a>
           <a href="#/chat">Chat</a>
           <a href="#/memory">Memory</a>
           <a href="#/settings">Settings</a>
