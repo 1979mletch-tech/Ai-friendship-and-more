@@ -1,0 +1,1 @@
+export const userSafeError=(error:unknown,fallback='Something went wrong. Please try again.')=>{if(error instanceof DOMException&&error.name==='AbortError')return'The request took too long. Please try again.';if(error instanceof TypeError)return'Unable to reach the service. Check your connection and try again.';return error instanceof Error&&error.message?error.message:fallback}
