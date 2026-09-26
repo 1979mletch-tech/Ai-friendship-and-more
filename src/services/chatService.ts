@@ -1,12 +1,14 @@
 import { readCloudConfig } from '../config/cloud'
 import type { AuthSession } from './authService'
-import type { ChatMode, ChatMessage } from '../types/companion'
+import type { ChatMode } from '../types/companion'
+
+type OutboundMessage = { role: 'user' | 'assistant'; text: string }
 
 export type ChatResult = { reply: string; safetyFlag?: boolean; mode?: string }
 
 export const sendCloudChat = async (
   session: AuthSession,
-  messages: ChatMessage[],
+  messages: OutboundMessage[],
   chatMode: ChatMode,
   companionName: string,
 ): Promise<ChatResult> => {
