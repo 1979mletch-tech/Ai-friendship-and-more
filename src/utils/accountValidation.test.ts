@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest'; import {isPlausibleEmail,normalizeEmail,passwordIssue} from './accountValidation'
+describe('account validation',()=>{it('normalizes email',()=>expect(normalizeEmail(' A@B.COM ')).toBe('a@b.com'));it('rejects weak passwords',()=>expect(passwordIssue('password')).toBeTruthy());it('accepts plausible account input',()=>{expect(isPlausibleEmail('a@b.test')).toBe(true);expect(passwordIssue('friendship2026')).toBeNull()})})
