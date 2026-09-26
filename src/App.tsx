@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { accountApi } from './services/account'
-import type { Account } from './services/account'
+import type { Account, Conversation } from './services/account'
 import type { Companion } from './services/account'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
@@ -62,6 +62,11 @@ const App = () => {
   const [accountError, setAccountError] = useState('')
   const [accountBusy, setAccountBusy] = useState(false)
   const [serverMessages, setServerMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [conversationSearch, setConversationSearch] = useState('')
+  const [serverDailyCount, setServerDailyCount] = useState(0)
+  const [isSending, setIsSending] = useState(false)
   const [serverNotes, setServerNotes] = useState<ProjectNote[]>([])
   const [companion, setCompanion] = useState<Companion>({ name: 'Friend', tone: 'warm and grounded' })
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
@@ -79,6 +84,8 @@ const App = () => {
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [noteSearch, setNoteSearch] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
       safeLocalStorageGet(STORAGE_KEYS.notes, []),
@@ -95,12 +102,24 @@ const App = () => {
     [planId, activeNotes],
   )
   const today = getLocalDayKey(new Date())
-  const todayUserMessages = visibleMessages.filter(
+  const todayUserMessages = account ? serverDailyCount : visibleMessages.filter(
     (message) =>
       message.role === 'user' &&
       (message.dayKey ||
         (message.createdAt ? getLocalDayKey(new Date(message.createdAt)) : '')) === today,
   ).length
+
+  const loadAccountData = async () => {
+    const [{ conversations: list }, { notes }, { companion: savedCompanion }, { messagesToday }] = await Promise.all([
+      accountApi.conversations(), accountApi.notes(), accountApi.companion(), accountApi.usage(),
+    ])
+    setConversations(list)
+    setActiveConversationId(list[0]?.id ?? null)
+    setServerMessages(list[0] ? (await accountApi.messages(list[0].id)).messages : [])
+    setServerNotes(notes)
+    setCompanion(savedCompanion)
+    setServerDailyCount(messagesToday)
+  }
 
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
@@ -112,9 +131,7 @@ const App = () => {
     accountApi.me().then(({ user }) => {
       if (user) {
         setAccount(user)
-        accountApi.messages().then(({ messages }) => setServerMessages(messages)).catch(() => setAccountError('Could not load account history'))
-        accountApi.notes().then(({ notes }) => setServerNotes(notes)).catch(() => setAccountError('Could not load saved notes'))
-        accountApi.companion().then(({ companion }) => setCompanion(companion)).catch(() => setAccountError('Could not load companion settings'))
+        loadAccountData().catch(() => setAccountError('Could not load account data'))
       }
     }).catch(() => { /* API is optional during static preview */ })
   }, [])
@@ -149,7 +166,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
   const sendMessage = async () => {
-    if (!input.trim() || !hasConsent) return
+    if (!input.trim() || !hasConsent || isSending) return
     const userText = input.trim()
     const crisis = isCrisisText(userText)
     if (!crisis && todayUserMessages >= entitlements.usageLimits.dailyMessages) return
@@ -163,13 +180,16 @@ const App = () => {
     const localDayKey = getLocalDayKey(new Date())
 
     if (account) {
+      if (!activeConversationId) { setAccountError('Start a new conversation first'); return }
+      setIsSending(true)
       try {
-        const { messages: saved } = await accountApi.chat(userText)
+        const { messages: saved } = await accountApi.chat(userText, activeConversationId)
         setServerMessages((current) => [...current, ...saved])
+        if (!crisis) setServerDailyCount((count) => count + 1)
         setInput('')
       } catch (error) {
         setAccountError(error instanceof Error ? error.message : 'Message could not be saved')
-      }
+      } finally { setIsSending(false) }
     } else {
       setMessages((current) => [
         ...current,
@@ -182,18 +202,24 @@ const App = () => {
 
   const addProjectNote = async () => {
     if (!project.trim() || !note.trim()) return
-    if (visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
+    if (!editingNoteId && visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
     if (account) {
       try {
-        const saved = await accountApi.addNote({ project: project.trim(), tags: tags.trim(), note: note.trim() })
-        setServerNotes((current) => [...current, saved.note])
+        if (editingNoteId) {
+          const saved = await accountApi.updateNote({ id: editingNoteId, project: project.trim(), tags: tags.trim(), note: note.trim() })
+          setServerNotes((current) => current.map((item) => item.id === editingNoteId ? saved.note : item))
+        } else {
+          const saved = await accountApi.addNote({ project: project.trim(), tags: tags.trim(), note: note.trim() })
+          setServerNotes((current) => [...current, saved.note])
+        }
       } catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save note'); return }
-    } else setProjectNotes((current) => [
-      ...current, { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() },
-    ])
+    } else setProjectNotes((current) => editingNoteId
+      ? current.map((item) => item.id === editingNoteId ? { ...item, project: project.trim(), tags: tags.trim(), note: note.trim() } : item)
+      : [...current, { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() }])
     setProject('')
     setTags('')
     setNote('')
+    setEditingNoteId(null)
   }
 
   const clearLocalData = () => {
@@ -219,13 +245,8 @@ const App = () => {
     setAccountError('')
     try {
       const { user } = await accountApi[action](accountEmail, accountPassword)
-      const { messages: saved } = await accountApi.messages()
-      const { notes } = await accountApi.notes()
-      const { companion: savedCompanion } = await accountApi.companion()
       setAccount(user)
-      setServerMessages(saved)
-      setServerNotes(notes)
-      setCompanion(savedCompanion)
+      await loadAccountData()
       setAccountPassword('')
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'Account request failed. Start the API server to use accounts.')
@@ -252,12 +273,12 @@ const App = () => {
             catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save companion settings') }
           }}>Save companion setup</button>
           <button type="button" onClick={async () => {
-            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not sign out') }
           }}>Sign out</button>
           <button type="button" onClick={async () => {
-            if (!window.confirm('Delete this account and all its saved messages?')) return
-            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            if (!window.confirm('Delete this account, conversations, notes, and companion settings?')) return
+            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not delete account') }
           }}>Delete account and saved messages</button>
         </>
@@ -310,6 +331,44 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
+      {account && <section className="conversation-section" aria-label="Conversation history">
+        <div className="input-row">
+          <button type="button" onClick={async () => {
+            try {
+              const { conversation } = await accountApi.createConversation()
+              setConversations((items) => [conversation, ...items])
+              setActiveConversationId(conversation.id)
+              setServerMessages([])
+              setAccountError('')
+            } catch { setAccountError('Could not start conversation') }
+          }}>New conversation</button>
+          <input aria-label="Search conversations" placeholder="Search conversations" value={conversationSearch} onChange={(e) => setConversationSearch(e.target.value)} />
+        </div>
+        <ul className="conversation-list">
+          {conversations.filter((item) => item.title.toLowerCase().includes(conversationSearch.toLowerCase())).map((item) => (
+            <li key={item.id}>
+              <button type="button" aria-current={item.id === activeConversationId} onClick={async () => {
+                try { const { messages } = await accountApi.messages(item.id); setActiveConversationId(item.id); setServerMessages(messages); setAccountError('') }
+                catch { setAccountError('Could not open conversation') }
+              }}>{item.title}</button>
+              <button type="button" aria-label={`Rename ${item.title}`} onClick={async () => {
+                const title = window.prompt('Conversation name', item.title)?.trim()
+                if (!title) return
+                try { await accountApi.renameConversation(item.id, title); setConversations((items) => items.map((entry) => entry.id === item.id ? { ...entry, title } : entry)) }
+                catch { setAccountError('Could not rename conversation') }
+              }}>Rename</button>
+              <button type="button" aria-label={`Delete ${item.title}`} onClick={async () => {
+                if (!window.confirm(`Delete “${item.title}” and its messages?`)) return
+                try {
+                  await accountApi.deleteConversation(item.id)
+                  setConversations((items) => items.filter((entry) => entry.id !== item.id))
+                  if (activeConversationId === item.id) { setActiveConversationId(null); setServerMessages([]) }
+                } catch { setAccountError('Could not delete conversation') }
+              }}>Delete</button>
+            </li>
+          ))}
+        </ul>
+      </section>}
       <p className="small">{account ? `Signed in as ${account.email}. Live AI chat requires server configuration; messages are saved only after a reply succeeds.` : 'Guest chat uses fixed sample responses stored in this browser. Sign in for server-backed AI chat when configured.'}</p>
       <p className="small">{disclosureText}</p>
       <p className="small">{crisisGuidance}</p>
@@ -362,7 +421,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || (todayUserMessages >= entitlements.usageLimits.dailyMessages && !isCrisisText(input))}
+          disabled={!hasConsent || isSending || Boolean(account && !activeConversationId) || (todayUserMessages >= entitlements.usageLimits.dailyMessages && !isCrisisText(input))}
         >
           Send
         </button>
@@ -402,13 +461,18 @@ const App = () => {
           placeholder="Project note / idea spark / check-in"
         />
       </label>
+      <input aria-label="Search project notes" placeholder="Search saved notes" value={noteSearch} onChange={(e) => setNoteSearch(e.target.value)} />
       <button type="button" onClick={addProjectNote}>
-        Save project note
+        {editingNoteId ? 'Save changes' : 'Save project note'}
       </button>
+      {editingNoteId && <button type="button" onClick={() => { setEditingNoteId(null); setProject(''); setTags(''); setNote('') }}>Cancel edit</button>}
       <ul>
-        {visibleProjectNotes.map((item) => (
+        {visibleProjectNotes.filter((item) => `${item.project} ${item.tags} ${item.note}`.toLowerCase().includes(noteSearch.toLowerCase())).map((item) => (
           <li key={item.id}>
             <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
+            <button type="button" aria-label={`Edit note for ${item.project}`} onClick={() => {
+              setEditingNoteId(item.id); setProject(item.project); setTags(item.tags); setNote(item.note)
+            }}>Edit note</button>{' '}
             <button type="button" aria-label={`Delete note for ${item.project}`} onClick={async () => {
               if (account) {
                 try { await accountApi.deleteNote(item.id); setServerNotes((current) => current.filter((note) => note.id !== item.id)) }

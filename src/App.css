@@ -1,5 +1,5 @@
 .shell {
-  max-width: 980px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 1rem;
   color: #f2f0ff;
@@ -17,6 +17,12 @@ nav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 a {
@@ -47,6 +53,17 @@ main {
   padding: 1rem;
 }
 
+.panel > label {
+  display: block;
+  margin: 0.8rem 0;
+}
+
+.panel > label:not(.consent) > input,
+.panel > label > textarea {
+  display: block;
+  width: 100%;
+}
+
 .starters,
 .plans,
 .grid,
@@ -71,6 +88,37 @@ main {
 
 .mode-row {
   margin: 0.7rem 0;
+}
+
+.conversation-section {
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #514970;
+  border-radius: 0.7rem;
+}
+
+.conversation-list {
+  list-style: none;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.conversation-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.45rem 0;
+}
+
+.conversation-list li button:first-child {
+  flex: 1 1 180px;
+  text-align: left;
+}
+
+.conversation-list [aria-current="true"] {
+  border-color: #d8b4ff;
+  background: #352958;
 }
 
 .chat-box {
@@ -100,6 +148,13 @@ button {
   border: 1px solid #5c5283;
   border-radius: 0.5rem;
   padding: 0.55rem;
+  min-height: 44px;
+  max-width: 100%;
+}
+
+input:not([type="checkbox"]),
+select {
+  min-width: 0;
 }
 
 button {
@@ -146,4 +201,16 @@ footer {
   margin: 1rem 0;
   font-size: 0.9rem;
   color: #c8bff0;
+}
+
+@media (max-width: 600px) {
+  .shell { padding: 0.7rem; }
+  header { align-items: flex-start; }
+  header h1 { font-size: 1.25rem; margin: 0.3rem 0; }
+  nav { width: 100%; }
+  nav a { flex: 1 1 auto; justify-content: center; }
+  .panel { padding: 0.8rem; }
+  .input-row { grid-template-columns: 1fr; }
+  .chat-box { max-height: 45vh; }
+  .conversation-list li button:first-child { flex-basis: 100%; }
 }

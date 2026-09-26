@@ -29,6 +29,8 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 - Consent/disclosure control before active chat
 - Server-backed email/password accounts with private chat history, account deletion, companion setup, and approved project notes when the API is running
 - Server chat endpoint with provider-backed replies when `OPENAI_API_KEY` and `OPENAI_MODEL` are configured; no fabricated live reply when unavailable
+- Searchable, renameable, and deletable account conversations; editable and searchable project notes
+- Server daily usage tracking that persists after a conversation or history is deleted
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
@@ -79,6 +81,8 @@ npm run dev     # terminal 2, website on Vite's local port
 ```
 
 The API creates `data/ai-friendship.sqlite` on first start. Set `DATABASE_PATH` to an absolute persistent location for deployment. The API binds to `127.0.0.1` and expects a same-origin reverse proxy for `/api`; configure HTTPS and `NODE_ENV=production` before exposing it. Cookies are HttpOnly, SameSite=Lax, and Secure in production. The Vite dev server proxies `/api` to the local API. Guest chat and notes remain browser-only. Signed-in chat, notes, and companion setup are account-scoped on the server.
+
+Existing saved chats are migrated into an "Earlier chat" conversation when the API starts after this update. Back up the SQLite file before upgrading a deployed instance. Conversation search matches titles; note search runs locally over the account's loaded notes.
 
 Set `OPENAI_API_KEY` and `OPENAI_MODEL` **only on the server** to enable signed-in live AI chat. The server uses the OpenAI Responses API with `store: false`; it sends the latest conversation turns and up to three approved project notes. Without these variables, ordinary signed-in chat returns a clear setup error and does not save the message. Crisis wording matching the local safety screen receives immediate deterministic emergency guidance without calling the provider. This screen is a limited safeguard, not a clinically validated crisis detection system. Guest chat still uses fixed sample responses. No Stripe secret is needed in this phase.
 
