@@ -32,8 +32,11 @@ describe('chat service', () => {
       'Nova',
     )
     expect(result.reply).toBe('hello')
-    const [, init] = fetchMock.mock.calls[0]
-    expect((init && init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
+    const call = fetchMock.mock.calls[0]
+    expect(call).toBeDefined()
+    if (!call) throw new Error('Expected fetch to be called')
+    const [, init] = call
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     const body = JSON.parse(String(init?.body))
     expect(body.messages[0].text).toHaveLength(2000)
   })
