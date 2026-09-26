@@ -3,38 +3,38 @@ import type { Entitlements, Plan, PlanId } from '../types/subscription'
 export const plans: Plan[] = [
   {
     id: 'free',
-    name: 'Free Friend',
-    priceLabel: '$0',
+    name: 'Starter',
+    priceLabel: '£0',
     proposed: false,
     features: [
-      'Up to 25 messages/day',
-      'Basic memory and conversation history',
-      'General + creative topic starters',
-      'Safety, privacy controls, and crisis guidance included',
+      'Symptom guidance and safety escalation',
+      'Healthcare visit summaries',
+      'Basic conversation history on this device',
+      'Privacy and data controls included',
     ],
   },
   {
     id: 'pro-monthly',
-    name: 'Studio Friend Pro',
-    priceLabel: '$9.99/month (proposed)',
+    name: 'Plus Monthly',
+    priceLabel: '£9.99/month (proposed)',
     proposed: true,
     features: [
-      'Higher daily usage cap',
-      'Richer creative project memory and tags',
-      'Longer history and project continuity',
-      'Deeper personalization and creative prompts',
+      'Higher daily consultation limit',
+      'Longer visit summary history',
+      'Priority product updates during controlled launch',
+      'Expanded personalised onboarding preferences',
     ],
   },
   {
     id: 'pro-annual',
-    name: 'Studio Friend Annual',
-    priceLabel: '$79/year (proposed)',
+    name: 'Plus Annual',
+    priceLabel: '£95/year (proposed)',
     proposed: true,
     features: [
-      'Everything in Pro monthly',
+      'Everything in Plus Monthly',
       'Annual pricing discount',
-      'Creative weekly reviews and idea sparks',
-      'Priority for future immersive upgrades',
+      'Longer on-device history allowance',
+      'Priority access to future integrated care features',
     ],
   },
 ]
@@ -43,26 +43,26 @@ export const getEntitlements = (planId: PlanId): Entitlements => {
   if (planId === 'free') {
     return {
       planId,
-      canUseCreativePrompts: true,
-      canUseProjectMemory: true,
+      canUseCreativePrompts: false,
+      canUseProjectMemory: false,
       canUseLongHistory: false,
       canUseAdvancedPersonalization: false,
       usageLimits: {
-        dailyMessages: 25,
-        basicHistoryDays: 7,
-        projectNotesLimit: 3,
+        dailyMessages: 10,
+        basicHistoryDays: 30,
+        projectNotesLimit: 5,
       },
     }
   }
 
   return {
     planId,
-    canUseCreativePrompts: true,
-    canUseProjectMemory: true,
+    canUseCreativePrompts: false,
+    canUseProjectMemory: false,
     canUseLongHistory: true,
     canUseAdvancedPersonalization: true,
     usageLimits: {
-      dailyMessages: 250,
+      dailyMessages: 50,
       basicHistoryDays: 365,
       projectNotesLimit: 100,
     },

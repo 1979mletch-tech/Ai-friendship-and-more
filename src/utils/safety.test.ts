@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { disclosureText, isCrisisText } from './safety'
+import { disclosureText, emergencyNotice, isCrisisText } from './safety'
 
 describe('safety helper', () => {
-  it('detects immediate-risk language', () => {
+  it('detects obvious emergency or self-harm language', () => {
+    expect(isCrisisText('I have severe chest pain and cannot breathe')).toBe(true)
     expect(isCrisisText('I want to die tonight')).toBe(true)
-    expect(isCrisisText('Can you help me write a poem?')).toBe(false)
+    expect(isCrisisText('My ankle hurts after running')).toBe(false)
   })
 
-  it('keeps non-therapy disclosure explicit', () => {
-    expect(disclosureText).toMatch(/not a therapist/i)
+  it('keeps healthcare limits explicit', () => {
+    expect(disclosureText).toMatch(/not a doctor/i)
     expect(disclosureText).toMatch(/not an emergency service/i)
+    expect(emergencyNotice).toMatch(/medical emergency/i)
   })
 })
