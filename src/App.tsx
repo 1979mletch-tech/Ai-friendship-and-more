@@ -32,6 +32,7 @@ import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { shouldResetForAccountChange } from './utils/accountIsolation'
 import { sessionStorageValue } from './utils/sessionStoragePolicy'
+import { billingStateLabel, type BillingLoadState } from './utils/billingState'
 
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -98,6 +99,7 @@ const App = () => {
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState('')
   const [billingStatus, setBillingStatus] = useState<BillingStatus>()
+  const [billingLoadState, setBillingLoadState] = useState<BillingLoadState>('idle')
   const [privacyBusy, setPrivacyBusy] = useState(false)
   const [privacyError, setPrivacyError] = useState('')
   const [memoryError, setMemoryError] = useState('')
@@ -189,7 +191,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memories, memories), [memories])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
   useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
-  useEffect(() => { if (!serverBillingMode || !session) { setBillingStatus(undefined); return }; void billingApi.status(session).then(setBillingStatus).catch(() => setBillingStatus(undefined)) }, [session, serverBillingMode])
+  useEffect(() => { if (!serverBillingMode || !session) { setBillingStatus(undefined); setBillingLoadState('idle'); return }; setBillingLoadState('loading'); void billingApi.status(session).then((status)=>{setBillingStatus(status);setBillingLoadState('loaded')}).catch(()=>{setBillingStatus(undefined);setBillingLoadState('error')}) }, [session, serverBillingMode])
   useEffect(() => {
     const env = readAppEnv()
     if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setSyncStatus('local'); return }
@@ -596,6 +598,7 @@ const App = () => {
         in safe preview mode.
       </p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      {serverBillingMode && <p className="small" aria-live="polite">{billingStateLabel(billingLoadState)}</p>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
