@@ -6,8 +6,9 @@ import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlem
 import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { hasCloudAuth } from './config/cloud'
-import { loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
+import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
 import { sendCloudChat } from './services/chatService'
+import { backupConversation, backupMemoryItems } from './services/cloudSyncService'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -408,7 +409,36 @@ const App = () => {
         <>
           <p>Signed in as <strong>{session.user.email}</strong>.</p>
           <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
-          <button type="button" onClick={async () => { await signOut(session); setSession(null); setAuthStatus('Signed out.') }}>Sign out</button>
+          <div className="account-actions">
+            <button type="button" onClick={async () => {
+              try {
+                await backupConversation(session, 'AI Friendship conversation', chatMode, messages)
+                setAuthStatus('Conversation backed up to your cloud account.')
+              } catch { setAuthStatus('Cloud conversation backup failed. Your local data is unchanged.') }
+            }}>Back up conversation</button>
+            <button type="button" onClick={async () => {
+              try {
+                await backupMemoryItems(session, memoryItems)
+                setAuthStatus('Approved memory backed up to your cloud account.')
+              } catch { setAuthStatus('Cloud memory backup failed. Your local data is unchanged.') }
+            }}>Back up approved memory</button>
+            <button type="button" onClick={async () => {
+              await signOut(session)
+              setSession(null)
+              setAuthStatus('Signed out.')
+            }}>Sign out</button>
+            <button className="danger" type="button" onClick={async () => {
+              const confirmed = window.confirm('Permanently delete this AI Friendship account and its cloud data?')
+              if (!confirmed) return
+              try {
+                await deleteAccount(session)
+                setSession(null)
+                clearLocalData()
+                setAuthStatus('Account deleted.')
+              } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
+            }}>Delete account permanently</button>
+          </div>
+          {authStatus && <p className="small" role="status">{authStatus}</p>
         </>
       ) : (
         <>
