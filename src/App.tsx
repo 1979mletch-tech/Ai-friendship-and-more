@@ -3,10 +3,13 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, getAssistantResponse } from './utils/safety'
+import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
+import { hasCloudAuth } from './config/cloud'
+import { loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
+import { sendCloudChat } from './services/chatService'
 
-type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -35,7 +38,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/account' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -55,6 +58,11 @@ const getLocalDayKey = (date: Date): string => {
 
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
+  const [session, setSession] = useState<AuthSession | null>(() => loadSession())
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authStatus, setAuthStatus] = useState('')
+  const [isSending, setIsSending] = useState(false)
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -129,24 +137,38 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memory, memoryItems), [memoryItems])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companionName, companionName), [companionName])
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
-    const response = getAssistantResponse(userText, chatMode)
-
+    let response = getAssistantResponse(userText, chatMode)
     const localDayKey = getLocalDayKey(new Date())
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(), role: 'user', text: userText,
+      createdAt: new Date().toISOString(), dayKey: localDayKey,
+    }
+
+    if (session && !isCrisisTextForClient(userText)) {
+      setIsSending(true)
+      try {
+        const cloud = await sendCloudChat(
+          session,
+          [...messages, userMessage].map((m) => ({ role: m.role, text: m.text })),
+          chatMode,
+          companionName,
+        )
+        response = cloud.reply
+      } catch {
+        response = getAssistantResponse(userText, chatMode) + ' Live AI is unavailable, so this is the local fallback response.'
+      } finally {
+        setIsSending(false)
+      }
+    }
 
     setMessages((current) => [
       ...current,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
+      userMessage,
       {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -261,7 +283,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || isSending || todayUserMessages >= entitlements.usageLimits.dailyMessages}
         >
           Send
         </button>
@@ -376,6 +398,42 @@ const App = () => {
     </section>
   )
 
+
+  const renderAccount = () => (
+    <section className="panel">
+      <h2>Account</h2>
+      {!hasCloudAuth() ? (
+        <p className="warn">Cloud accounts are not configured on this deployment yet. Local preview features remain available.</p>
+      ) : session ? (
+        <>
+          <p>Signed in as <strong>{session.user.email}</strong>.</p>
+          <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
+          <button type="button" onClick={async () => { await signOut(session); setSession(null); setAuthStatus('Signed out.') }}>Sign out</button>
+        </>
+      ) : (
+        <>
+          <label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="current-password" minLength={8} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>
+          <div className="starters">
+            <button type="button" onClick={async () => {
+              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Signed in.') } }
+              catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
+            }}>Sign in</button>
+            <button type="button" onClick={async () => {
+              try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); setSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
+              catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Registration failed.') }
+            }}>Create account</button>
+            <button type="button" onClick={async () => {
+              try { await requestPasswordReset(authEmail.trim()); setAuthStatus('If that account exists, recovery instructions have been requested.') }
+              catch { setAuthStatus('Unable to request recovery right now.') }
+            }}>Forgot password</button>
+          </div>
+          {authStatus && <p className="small" role="status">{authStatus}</p>}
+        </>
+      )}
+    </section>
+  )
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -487,6 +545,9 @@ const App = () => {
     case '/settings':
       page = renderSettings()
       break
+    case '/account':
+      page = renderAccount()
+      break
     case '/pricing':
       page = renderPricing()
       break
@@ -511,6 +572,7 @@ const App = () => {
           <a href="#/history">History</a>
           <a href="#/memory">Memory</a>
           <a href="#/settings">Settings</a>
+          <a href="#/account">Account</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>
