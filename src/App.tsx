@@ -445,7 +445,7 @@ const App = () => {
               } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
             }}>Delete account permanently</button>
           </div>
-          {authStatus && <p className="small" role="status">{authStatus}</p>
+          {authStatus && <p className="small" role="status">{authStatus}</p>}
         </>
       ) : (
         <>
