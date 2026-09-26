@@ -207,15 +207,28 @@ const App = () => {
 
   const renderHome = () => (
     <section className="panel">
-      <h1>AI Friendship</h1>
-      <p>
-        A warm AI companion for artists and creative people—writers, musicians, designers, filmmakers,
-        dancers, photographers—and anyone who wants supportive conversation.
-      </p>
-      <p>
-        Use it for brainstorming, reflection, encouragement, creative blocks, and project continuity. It is
-        not human, not therapy, and not an emergency service.
-      </p>
+      <div className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">MEET AI AURORA</p>
+          <h1>Ideas glow brighter<br />when you’re not thinking alone.</h1>
+          <p className="hero-lead">A warm AI companion for conversation, creativity and the moments when you need somewhere to think out loud.</p>
+          <div className="hero-actions">
+            <a className="primary-cta" href="#/chat">Talk to Aurora</a>
+            <a className="secondary-cta" href="#/pricing">Explore plans</a>
+          </div>
+          <p className="trust-line">AI companion · You control memory · Clear privacy controls</p>
+        </div>
+        <div className="aurora-stage" aria-hidden="true">
+          <div className="aurora-glow aurora-glow-one" />
+          <div className="aurora-glow aurora-glow-two" />
+          <div className="aurora-orb"><span>A</span></div>
+          <p>Always AI. Designed to feel easy to talk to.</p>
+        </div>
+      </div>
+      <div className="home-intro">
+        <p className="eyebrow">START WHERE YOU ARE</p>
+        <h2>What would help right now?</h2>
+      </div>
       <div className="starters">
         {['Help me break a creative block', 'Give me 3 songwriting ideas', 'Reflect on my week kindly', 'Plan my next focused hour'].map(
           (starter) => (
@@ -398,7 +411,7 @@ const App = () => {
         Companion name
         <input value={companionName} maxLength={32} onChange={(e) => setCompanionName(e.target.value.replace(/[<>]/g, '').slice(0, 32))} />
       </label>
-      <p className="small">AI Friendship always remains clearly identified as AI even when you choose a companion name.</p>
+      <p className="small">AI Aurora always remains clearly identified as AI even when you choose a companion name.</p>
       <h3>Data controls</h3>
       <p className="small">Deleting local data removes chat, project notes and memory from this browser. It does not claim to delete data from external providers.</p>
       <div className="account-actions">
@@ -425,7 +438,7 @@ const App = () => {
           <div className="account-actions">
             <button type="button" onClick={async () => {
               try {
-                await backupConversation(session, 'AI Friendship conversation', chatMode, messages)
+                await backupConversation(session, 'AI Aurora conversation', chatMode, messages)
                 setAuthStatus('Conversation backed up to your cloud account.')
               } catch { setAuthStatus('Cloud conversation backup failed. Your local data is unchanged.') }
             }}>Back up conversation</button>
@@ -441,7 +454,7 @@ const App = () => {
               setAuthStatus('Signed out.')
             }}>Sign out</button>
             <button className="danger" type="button" onClick={async () => {
-              const confirmed = window.confirm('Permanently delete this AI Friendship account and its cloud data?')
+              const confirmed = window.confirm('Permanently delete this AI Aurora account and its cloud data?')
               if (!confirmed) return
               try {
                 await deleteAccount(session)
@@ -527,7 +540,7 @@ const App = () => {
         <li>AI/database providers may process data per their terms and configuration.</li>
       </ul>
       <p>
-        AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
+        AI Aurora is not legally privileged communication, not a therapist, and not absolute confidentiality.
       </p>
       <p className="warn">
         Production launch still requires: security review, access controls, logging policy, retention policy, and
@@ -611,7 +624,7 @@ const App = () => {
   return (
     <div className="shell">
       <header>
-        <h1>AI Friendship V1+</h1>
+        <a className="brand" href="#/" aria-label="AI Aurora home"><span className="brand-mark">A</span><span>AI <strong>AURORA</strong></span></a>
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
@@ -626,7 +639,7 @@ const App = () => {
       </header>
       <main>{page}</main>
       <footer>
-        AI companion for reflection and creativity. Not human. Not therapy. Not emergency support.
+        AI Aurora is an AI companion for conversation and creativity. Not human. Not therapy. Not emergency support.
       </footer>
     </div>
   )
