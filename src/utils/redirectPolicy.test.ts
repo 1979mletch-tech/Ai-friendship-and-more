@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{trustedRedirect}from'./redirectPolicy'
+describe('billing redirect policy',()=>{it('allows only expected https Stripe hosts',()=>{expect(trustedRedirect('https://checkout.stripe.com/c/pay','checkout')).toContain('checkout.stripe.com');expect(()=>trustedRedirect('https://evil.test','checkout')).toThrow();expect(()=>trustedRedirect('http://checkout.stripe.com/x','checkout')).toThrow()})})
