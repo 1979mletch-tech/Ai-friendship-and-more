@@ -1,5 +1,5 @@
 import { readCloudConfig } from '../config/cloud'
-import type { AuthSession } from './authService'
+import { ensureFreshSession, type AuthSession } from './authService'
 import type { ChatMode } from '../types/companion'
 
 type OutboundMessage = { role: 'user' | 'assistant'; text: string }
@@ -14,9 +14,10 @@ export const sendCloudChat = async (
 ): Promise<ChatResult> => {
   const config = readCloudConfig()
   if (!config.chatApiUrl) throw new Error('Live AI is not configured.')
+  const activeSession = await ensureFreshSession(session)
   const response = await fetch(config.chatApiUrl, {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json' },
+    headers: { Authorization: 'Bearer ' + activeSession.accessToken, apikey: config.supabaseAnonKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: messages.slice(-24).map(({ role, text }) => ({ role, text: text.slice(0, 2000) })),
       mode: chatMode,
