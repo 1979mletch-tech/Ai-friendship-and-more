@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { accountApi } from './services/account'
+import type { Account, Conversation, Feedback, Session } from './services/account'
+import type { Companion } from './services/account'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, isCrisisText } from './utils/safety'
+import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive' | '/account'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -33,7 +36,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive' || hash === '/account') {
     return hash
   }
   return '/'
@@ -53,44 +56,90 @@ const getLocalDayKey = (date: Date): string => {
 
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
+  const [account, setAccount] = useState<Account | null>(null)
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountPassword, setAccountPassword] = useState('')
+  const [accountError, setAccountError] = useState('')
+  const [accountBusy, setAccountBusy] = useState(false)
+  const [serverMessages, setServerMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [conversationSearch, setConversationSearch] = useState('')
+  const [serverDailyCount, setServerDailyCount] = useState(0)
+  const [feedback, setFeedback] = useState<Feedback[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [serverNotes, setServerNotes] = useState<ProjectNote[]>([])
+  const [companion, setCompanion] = useState<Companion>({ name: 'Friend', tone: 'warm and grounded' })
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
-  const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  // Paid entitlements require a verified server subscription. Local selections are previews only.
+  const [previewPlanId, setPreviewPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  const planId: PlanId = 'free'
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(STORAGE_KEYS.messages, []),
   )
+  const visibleMessages = account ? serverMessages : messages
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [noteSearch, setNoteSearch] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
       safeLocalStorageGet(STORAGE_KEYS.notes, []),
       normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
     ),
   )
+  const activeNotes = account ? serverNotes : projectNotes
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
 
   const billing = useMemo(() => getSubscriptionState(), [])
   const entitlements = useMemo(() => getEntitlements(planId), [planId])
   const visibleProjectNotes = useMemo(
-    () => applyProjectNotesLimit(projectNotes, planId),
-    [planId, projectNotes],
+    () => applyProjectNotesLimit(activeNotes, planId),
+    [planId, activeNotes],
   )
   const today = getLocalDayKey(new Date())
-  const todayUserMessages = messages.filter(
+  const todayUserMessages = account ? serverDailyCount : visibleMessages.filter(
     (message) =>
       message.role === 'user' &&
       (message.dayKey ||
         (message.createdAt ? getLocalDayKey(new Date(message.createdAt)) : '')) === today,
   ).length
 
+  const loadAccountData = async () => {
+    const [{ conversations: list }, { notes }, { companion: savedCompanion }, { messagesToday }, { feedback: savedFeedback }, { sessions: activeSessions }] = await Promise.all([
+      accountApi.conversations(), accountApi.notes(), accountApi.companion(), accountApi.usage(), accountApi.feedback(), accountApi.sessions(),
+    ])
+    setConversations(list)
+    setActiveConversationId(list[0]?.id ?? null)
+    setServerMessages(list[0] ? (await accountApi.messages(list[0].id)).messages : [])
+    setServerNotes(notes)
+    setCompanion(savedCompanion)
+    setServerDailyCount(messagesToday)
+    setFeedback(savedFeedback)
+    setSessions(activeSessions)
+  }
+
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  useEffect(() => {
+    accountApi.me().then(({ user }) => {
+      if (user) {
+        setAccount(user)
+        loadAccountData().catch(() => setAccountError('Could not load account data'))
+      }
+    }).catch(() => { /* API is optional during static preview */ })
   }, [])
 
   useEffect(() => {
@@ -118,55 +167,65 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, previewPlanId), [previewPlanId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
-  const sendMessage = () => {
-    if (!input.trim() || !hasConsent) return
+  const sendMessage = async () => {
+    if (!input.trim() || !hasConsent || isSending) return
     const userText = input.trim()
-    if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
-
     const crisis = isCrisisText(userText)
+    if (!crisis && todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
     const response = crisis
-      ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
+      ? crisisGuidance
       : chatMode === 'creative'
         ? 'Let’s keep your creative momentum going. Want a quick spark, a project check-in, or gentle feedback on your latest idea?'
         : 'I’m here with you. We can reflect, brainstorm, or just talk through what matters right now.'
 
     const localDayKey = getLocalDayKey(new Date())
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: response,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-    ])
-    setInput('')
+    if (account) {
+      if (!activeConversationId) { setAccountError('Start a new conversation first'); return }
+      setIsSending(true)
+      try {
+        const { messages: saved } = await accountApi.chat(userText, activeConversationId)
+        setServerMessages((current) => [...current, ...saved])
+        if (!crisis) setServerDailyCount((count) => count + 1)
+        setInput('')
+      } catch (error) {
+        setAccountError(error instanceof Error ? error.message : 'Message could not be saved')
+      } finally { setIsSending(false) }
+    } else {
+      setMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: 'user', text: userText, createdAt: new Date().toISOString(), dayKey: localDayKey },
+        { id: crypto.randomUUID(), role: 'assistant', text: response, createdAt: new Date().toISOString(), dayKey: localDayKey },
+      ])
+      setInput('')
+    }
   }
 
-  const addProjectNote = () => {
+  const addProjectNote = async () => {
     if (!project.trim() || !note.trim()) return
-    if (visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
-    setProjectNotes((current) => [
-      ...current,
-      { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() },
-    ])
+    if (!editingNoteId && visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
+    if (account) {
+      try {
+        if (editingNoteId) {
+          const saved = await accountApi.updateNote({ id: editingNoteId, project: project.trim(), tags: tags.trim(), note: note.trim() })
+          setServerNotes((current) => current.map((item) => item.id === editingNoteId ? saved.note : item))
+        } else {
+          const saved = await accountApi.addNote({ project: project.trim(), tags: tags.trim(), note: note.trim() })
+          setServerNotes((current) => [...current, saved.note])
+        }
+      } catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save note'); return }
+    } else setProjectNotes((current) => editingNoteId
+      ? current.map((item) => item.id === editingNoteId ? { ...item, project: project.trim(), tags: tags.trim(), note: note.trim() } : item)
+      : [...current, { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() }])
     setProject('')
     setTags('')
     setNote('')
+    setEditingNoteId(null)
   }
 
   const clearLocalData = () => {
@@ -174,6 +233,95 @@ const App = () => {
     setMessages([])
     setProjectNotes([])
   }
+
+  const exportLocalData = async () => {
+    let exportData: Record<string, unknown> = { exportedAt: new Date().toISOString(), messages, projectNotes }
+    if (account) {
+      try { exportData = { ...(await accountApi.exportAccount()), localBrowserData: { messages, projectNotes } } }
+      catch { setAccountError('Could not export account data'); return }
+    }
+    const data = JSON.stringify(exportData, null, 2)
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ai-friendship-data-${getLocalDayKey(new Date())}.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const authenticate = async (action: 'login' | 'register') => {
+    setAccountBusy(true)
+    setAccountError('')
+    try {
+      const { user } = await accountApi[action](accountEmail, accountPassword)
+      setAccount(user)
+      await loadAccountData()
+      setAccountPassword('')
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'Account request failed. Start the API server to use accounts.')
+    } finally {
+      setAccountBusy(false)
+    }
+  }
+
+  const renderAccount = () => (
+    <section className="panel">
+      <h2>Account</h2>
+      {account ? (
+        <>
+          <p>Signed in as {account.email}. Chat history, companion setup, and saved project notes belong to this account on this server.</p>
+          <h3>Companion setup</h3>
+          <label>Companion name <input value={companion.name} maxLength={40} onChange={(e) => setCompanion({ ...companion, name: e.target.value })} /></label>
+          <label>Conversation style <select value={companion.tone} onChange={(e) => setCompanion({ ...companion, tone: e.target.value })}>
+            <option value="warm and grounded">Warm and grounded</option>
+            <option value="upbeat and creative">Upbeat and creative</option>
+            <option value="calm and concise">Calm and concise</option>
+          </select></label>
+          <button type="button" onClick={async () => {
+            try { const saved = await accountApi.saveCompanion(companion); setCompanion(saved.companion); setAccountError('Companion settings saved') }
+            catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save companion settings') }
+          }}>Save companion setup</button>
+          <h3>Security</h3>
+          <p>Active sessions: {sessions.length}. Changing your password signs out every device.</p>
+          <label>Current password <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
+          <label>New password (at least 12 characters) <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
+          <button type="button" onClick={async () => {
+            try {
+              await accountApi.changePassword(currentPassword, newPassword)
+              setCurrentPassword(''); setNewPassword(''); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([])
+              setAccountError('Password changed. Sign in again with the new password.')
+            } catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not change password') }
+          }}>Change password and sign out</button>{' '}
+          <button type="button" onClick={async () => {
+            try { await accountApi.revokeOtherSessions(); setSessions((items) => items.filter((item) => item.current)); setAccountError('Other sessions signed out') }
+            catch { setAccountError('Could not sign out other sessions') }
+          }}>Sign out other devices</button>
+          <button type="button" onClick={async () => {
+            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            catch { setAccountError('Could not sign out') }
+          }}>Sign out</button>
+          <button type="button" onClick={async () => {
+            if (!window.confirm('Delete this account, conversations, notes, and companion settings?')) return
+            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setConversations([]); setSessions([]); setActiveConversationId(null); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
+            catch { setAccountError('Could not delete account') }
+          }}>Delete account and saved messages</button>
+        </>
+      ) : (
+        <>
+          <p>Create an account or sign in to save your chat history, companion settings, and project notes on the configured server.</p>
+          <label>Email <input type="email" autoComplete="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} /></label>
+          <label>Password <input type="password" autoComplete="current-password" value={accountPassword} onChange={(e) => setAccountPassword(e.target.value)} /></label>
+          <div className="starters">
+            <button type="button" disabled={accountBusy} onClick={() => authenticate('login')}>Sign in</button>
+            <button type="button" disabled={accountBusy} onClick={() => authenticate('register')}>Create account</button>
+          </div>
+        </>
+      )}
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
+    </section>
+  )
 
   const renderHome = () => (
     <section className="panel">
@@ -209,7 +357,47 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
+      {account && <section className="conversation-section" aria-label="Conversation history">
+        <div className="input-row">
+          <button type="button" onClick={async () => {
+            try {
+              const { conversation } = await accountApi.createConversation()
+              setConversations((items) => [conversation, ...items])
+              setActiveConversationId(conversation.id)
+              setServerMessages([])
+              setAccountError('')
+            } catch { setAccountError('Could not start conversation') }
+          }}>New conversation</button>
+          <input aria-label="Search conversations" placeholder="Search conversations" value={conversationSearch} onChange={(e) => setConversationSearch(e.target.value)} />
+        </div>
+        <ul className="conversation-list">
+          {conversations.filter((item) => item.title.toLowerCase().includes(conversationSearch.toLowerCase())).map((item) => (
+            <li key={item.id}>
+              <button type="button" aria-current={item.id === activeConversationId} onClick={async () => {
+                try { const { messages } = await accountApi.messages(item.id); setActiveConversationId(item.id); setServerMessages(messages); setAccountError('') }
+                catch { setAccountError('Could not open conversation') }
+              }}>{item.title}</button>
+              <button type="button" aria-label={`Rename ${item.title}`} onClick={async () => {
+                const title = window.prompt('Conversation name', item.title)?.trim()
+                if (!title) return
+                try { await accountApi.renameConversation(item.id, title); setConversations((items) => items.map((entry) => entry.id === item.id ? { ...entry, title } : entry)) }
+                catch { setAccountError('Could not rename conversation') }
+              }}>Rename</button>
+              <button type="button" aria-label={`Delete ${item.title}`} onClick={async () => {
+                if (!window.confirm(`Delete “${item.title}” and its messages?`)) return
+                try {
+                  await accountApi.deleteConversation(item.id)
+                  setConversations((items) => items.filter((entry) => entry.id !== item.id))
+                  if (activeConversationId === item.id) { setActiveConversationId(null); setServerMessages([]) }
+                } catch { setAccountError('Could not delete conversation') }
+              }}>Delete</button>
+            </li>
+          ))}
+        </ul>
+      </section>}
+      <p className="small">{account ? `Signed in as ${account.email}. Live AI chat requires server configuration; messages are saved only after a reply succeeds.` : 'Guest chat uses fixed sample responses stored in this browser. Sign in for server-backed AI chat when configured.'}</p>
       <p className="small">{disclosureText}</p>
+      <p className="small">{crisisGuidance}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -236,13 +424,23 @@ const App = () => {
       )}
 
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <p className="small">No messages yet. Start with a topic starter or your own question.</p>
         ) : (
           <ul>
-            {messages.map((msg) => (
+            {visibleMessages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
-                <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <strong>{msg.role === 'assistant' ? (account ? companion.name : 'Friend') : 'You'}:</strong> {msg.text}
+                {account && msg.role === 'assistant' && <div className="feedback-row" aria-label="Was this reply helpful?">
+                  <span>Helpful?</span>{(['yes', 'somewhat', 'no'] as const).map((rating) => (
+                    <button key={rating} type="button" aria-pressed={feedback.find((item) => item.messageId === msg.id)?.rating === rating} onClick={async () => {
+                      try {
+                        await accountApi.saveFeedback(msg.id, rating)
+                        setFeedback((items) => [...items.filter((item) => item.messageId !== msg.id), { messageId: msg.id, rating }])
+                      } catch { setAccountError('Could not save feedback') }
+                    }}>{rating === 'yes' ? 'Yes' : rating === 'somewhat' ? 'Somewhat' : 'No'}</button>
+                  ))}
+                </div>}
               </li>
             ))}
           </ul>
@@ -259,20 +457,21 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || isSending || Boolean(account && !activeConversationId) || (todayUserMessages >= entitlements.usageLimits.dailyMessages && !isCrisisText(input))}
         >
           Send
         </button>
       </div>
       <p className="small">
-        Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
+        Daily message usage: {todayUserMessages}. Free plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
       </p>
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit for this plan. Try again tomorrow or choose Pro.</p>
+        <p className="warn">You reached today’s message limit. Crisis guidance remains available. Paid plans are previews until billing is implemented.</p>
       )}
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
 
-      <h3>Creative project memory (local fallback)</h3>
+      <h3>Creative project memory {account ? '(saved to your account)' : '(local browser)'}</h3>
       <p className="small">
         Keep only non-sensitive preferences, approved project notes, and creative context. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
       </p>
@@ -298,13 +497,24 @@ const App = () => {
           placeholder="Project note / idea spark / check-in"
         />
       </label>
+      <input aria-label="Search project notes" placeholder="Search saved notes" value={noteSearch} onChange={(e) => setNoteSearch(e.target.value)} />
       <button type="button" onClick={addProjectNote}>
-        Save project note
+        {editingNoteId ? 'Save changes' : 'Save project note'}
       </button>
+      {editingNoteId && <button type="button" onClick={() => { setEditingNoteId(null); setProject(''); setTags(''); setNote('') }}>Cancel edit</button>}
       <ul>
-        {visibleProjectNotes.map((item) => (
+        {visibleProjectNotes.filter((item) => `${item.project} ${item.tags} ${item.note}`.toLowerCase().includes(noteSearch.toLowerCase())).map((item) => (
           <li key={item.id}>
-            <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}
+            <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
+            <button type="button" aria-label={`Edit note for ${item.project}`} onClick={() => {
+              setEditingNoteId(item.id); setProject(item.project); setTags(item.tags); setNote(item.note)
+            }}>Edit note</button>{' '}
+            <button type="button" aria-label={`Delete note for ${item.project}`} onClick={async () => {
+              if (account) {
+                try { await accountApi.deleteNote(item.id); setServerNotes((current) => current.filter((note) => note.id !== item.id)) }
+                catch { setAccountError('Could not delete note') }
+              } else setProjectNotes((current) => current.filter((note) => note.id !== item.id))
+            }}>Delete note</button>
           </li>
         ))}
       </ul>
@@ -321,7 +531,7 @@ const App = () => {
         Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
         in safe preview mode.
       </p>
-      <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      <p className="warn">{billing.setupMessage} No payment or paid access is available yet.</p>
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
@@ -336,19 +546,18 @@ const App = () => {
             <button
               type="button"
               aria-label={`Choose ${plan.name}`}
-              aria-current={planId === plan.id}
+              aria-current={previewPlanId === plan.id}
               onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
+                setPreviewPlanId(plan.id)
               }}
             >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
+              {previewPlanId === plan.id ? 'Viewing plan' : 'Preview plan'}
             </button>
           </article>
         ))}
       </div>
       <p className="small">
-        Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
+        Active plan: Free Friend. Viewing: {previewPlanId}. Paid access requires server-verified billing. Safety disclosures, privacy controls, and crisis guidance stay available to everyone.
       </p>
     </section>
   )
@@ -358,10 +567,11 @@ const App = () => {
       <h2>Privacy Centre</h2>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>Secrets must stay in environment variables, never hard-coded.</li>
-        <li>You can clear chat history and creative notes locally at any time.</li>
+        <li>Guest chat and notes stay in this browser and use fixed sample responses. Signed-in chat and notes use the configured server; when live AI is enabled, conversation context and approved notes are sent to the AI provider.</li>
+        <li>Never enter provider secrets into browser environment variables.</li>
+        <li>The export includes all saved account conversations, messages, notes, feedback, and settings, plus guest data still stored in this browser. Store the downloaded file securely.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
-        <li>AI/database providers may process data per their terms and configuration.</li>
+        <li>When server-side AI is configured, the recent conversation and approved project notes are sent to the AI provider to generate a reply.</li>
       </ul>
       <p>
         AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
@@ -370,9 +580,24 @@ const App = () => {
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <div className="starters">
+        <button type="button" onClick={exportLocalData}>Export all my data (JSON)</button>
+        <button type="button" onClick={async () => {
+          if (account) {
+            try { await accountApi.deleteMessages(); setServerMessages([]) }
+            catch { setAccountError('Could not delete saved messages') }
+          } else setMessages([])
+        }}>Delete {account ? 'saved' : 'local'} chat history</button>
+        <button type="button" onClick={async () => {
+          if (account) {
+            try { await accountApi.deleteNotes(); setServerNotes([]) }
+            catch { setAccountError('Could not delete saved notes') }
+          } else setProjectNotes([])
+        }}>Delete {account ? 'saved' : 'local'} project notes</button>
+        <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
+        {account && <a href="#/account">Delete entire account and server data</a>}
+      </div>
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
     </section>
   )
 
@@ -425,6 +650,9 @@ const App = () => {
     case '/immersive':
       page = renderImmersive()
       break
+    case '/account':
+      page = renderAccount()
+      break
     default:
       page = renderHome()
       break
@@ -439,6 +667,7 @@ const App = () => {
           <a href="#/chat">Chat</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
+          <a href="#/account">Account</a>
           <a href="#/immersive">Immersive</a>
         </nav>
       </header>
