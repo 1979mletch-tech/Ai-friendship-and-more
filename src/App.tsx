@@ -34,6 +34,7 @@ import { shouldResetForAccountChange } from './utils/accountIsolation'
 import { sessionStorageValue } from './utils/sessionStoragePolicy'
 import { billingStateLabel, type BillingLoadState } from './utils/billingState'
 import { privacyDeleteLabel, privacyScopeText } from './utils/privacyCopy'
+import { conversationDeleteLabel, memoryDeleteLabel } from './utils/accessibleLabels'
 
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -429,7 +430,7 @@ const App = () => {
       <h2>{companion.name || 'Friend'} — Companion Chat</h2>
       <p className="small" aria-live="polite">Data mode: {syncLabel(syncStatus)}</p>
       <div className="starters"><button type="button" onClick={() => { void newConversation() }}>New conversation</button></div>
-      {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" onClick={() => { void deleteConversation(item.id) }}>Delete</button></li>)}</ul></div>}
+      {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" aria-label={conversationDeleteLabel(item.title)} onClick={() => { void deleteConversation(item.id) }}>Delete</button></li>)}</ul></div>}
       <p className="small">{disclosureText}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
@@ -553,7 +554,7 @@ const App = () => {
       </div>
       <button type="button" onClick={() => { setMemoryError(''); void addMemory() }} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
       {memoryError && <p className="warn" role="alert">{memoryError}</p>}
-      {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" onClick={() => { void forgetMemory(item) }}>Forget this</button></li>)}</ul>}
+      {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" aria-label={memoryDeleteLabel(item.label)} onClick={() => { void forgetMemory(item) }}>Forget this</button></li>)}</ul>}
       <button type="button" disabled={memories.length === 0} onClick={() => { void forgetAllMemories() }}>Forget all approved memories</button>
       <h3>Creative project notes</h3>
       {visibleProjectNotes.length === 0 ? <p className="small">No project notes saved.</p> : <ul>{visibleProjectNotes.map((item) => <li key={item.id}><strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}<button type="button" onClick={() => deleteNote(item.id)}>Delete note</button></li>)}</ul>}
