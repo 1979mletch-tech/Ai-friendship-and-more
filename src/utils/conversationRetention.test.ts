@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{pruneConversations}from'./conversationRetention'
+describe('conversation retention',()=>{it('removes conversations outside configured history window',()=>{const base={title:'x',createdAt:'2026-01-01T00:00:00Z',messages:[]};const r=pruneConversations([{...base,id:'old',updatedAt:'2026-01-01T00:00:00Z'},{...base,id:'new',updatedAt:'2026-01-09T00:00:00Z'}],7,new Date('2026-01-10T00:00:00Z'));expect(r.map(x=>x.id)).toEqual(['new'])})})
