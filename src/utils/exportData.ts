@@ -19,6 +19,10 @@ export const downloadJson = (filename: string, value: unknown) => {
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
   anchor.click()
-  URL.revokeObjectURL(url)
+  anchor.remove()
+  // Mobile browsers may not start the download before the click handler returns.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
