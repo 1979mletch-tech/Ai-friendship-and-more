@@ -33,6 +33,7 @@ import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from
 import { shouldResetForAccountChange } from './utils/accountIsolation'
 import { sessionStorageValue } from './utils/sessionStoragePolicy'
 import { billingStateLabel, type BillingLoadState } from './utils/billingState'
+import { privacyDeleteLabel, privacyScopeText } from './utils/privacyCopy'
 
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -568,8 +569,10 @@ const App = () => {
         Allow companion chat on this device
       </label>
       <p>Current plan: <strong>{effectivePlanId}</strong></p>
-      <button type="button" onClick={clearLocalData}>Delete local chat history + memory</button>
-      <p className="warn">Deleting local data cannot be undone.</p>
+      <button type="button" disabled={privacyBusy} onClick={clearLocalData}>{privacyDeleteLabel(serverBillingMode,privacyBusy)}</button>
+      <p className="small">{privacyScopeText(serverBillingMode)}</p>
+      {privacyError && <p className="warn" role="alert">{privacyError}</p>}
+      <p className="warn">Deletion cannot be undone.</p>
     </section>
   )
 
@@ -657,7 +660,7 @@ const App = () => {
           Export my local data
         </button>
         <button type="button" disabled={privacyBusy} onClick={clearLocalData}>
-          {privacyBusy ? 'Deleting…' : 'Delete my local memory + history'}
+          {privacyDeleteLabel(serverBillingMode,privacyBusy)}
         </button>
       </div>
       {privacyError && <p className="warn" role="alert">{privacyError}</p>}
