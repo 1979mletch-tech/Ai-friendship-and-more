@@ -302,7 +302,7 @@ const App = () => {
   const [resetPassword, setResetPassword] = useState({ password: '', confirmPassword: '' })
 
   const navigate = (nextRoute: Route) => {
-    window.location.hash = nextRoute
+    window.history.replaceState(null, '', `#${nextRoute}`)
     setRoute(nextRoute)
   }
 
@@ -365,12 +365,6 @@ const App = () => {
       descriptionTag.setAttribute('content', meta.description)
     }
   }, [route])
-
-  useEffect(() => {
-    if (!draft.country) {
-      setDraft((current) => ({ ...current, country: account?.country || 'uk' }))
-    }
-  }, [account?.country, draft.country])
 
   const updateDraft = <K extends keyof ConsultationInput>(key: K, value: ConsultationInput[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
