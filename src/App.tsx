@@ -8,8 +8,7 @@ import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from
 import { hasCloudAuth } from './config/cloud'
 import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
 import { sendCloudChat } from './services/chatService'
-import { backupConversation } from './services/cloudSyncService'
-import { backupMemoryItems } from './services/cloudSyncServiceV2'
+import { backupConversation, backupMemoryItems } from './services/cloudSyncServiceV2'
 import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
 import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
@@ -479,9 +478,12 @@ const App = () => {
           <p>Signed in as <strong>{session.user.email}</strong>.</p>
           <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
           <div className="account-actions">
-            <button type="button" onClick={async () => {
+            <button type="button" disabled={messages.length === 0} onClick={async () => {
               try {
-                await backupConversation(session, 'AI Aurora conversation', chatMode, messages)
+                const backupKey = localAccountKey('ai_friendship_cloud_conversation_id', session)
+                const backupId = safeLocalStorageGet(backupKey, '') || crypto.randomUUID()
+                safeLocalStorageSet(backupKey, backupId)
+                await backupConversation(session, 'AI Aurora conversation', chatMode, messages, backupId)
                 setAuthStatus('Conversation backed up to your cloud account.')
               } catch { setAuthStatus('Cloud conversation backup failed. Your local data is unchanged.') }
             }}>Back up conversation</button>
