@@ -1,0 +1,2 @@
+import{describe,expect,it,vi}from'vitest';import{conversationApi}from'./conversationApi'
+describe('conversation api',()=>{it('encodes object ids and authenticates',async()=>{vi.stubEnv('VITE_API_BASE_URL','https://api.test');const f=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>[]});vi.stubGlobal('fetch',f);await conversationApi.messages({user:{id:'u',email:'a@b.test'},accessToken:'tok'},'a/b');expect(f.mock.calls[0][0]).toContain('a%2Fb');expect(f.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');vi.unstubAllGlobals();vi.unstubAllEnvs()})})
