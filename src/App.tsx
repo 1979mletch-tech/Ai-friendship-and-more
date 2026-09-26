@@ -95,6 +95,7 @@ const App = () => {
   const [privacyBusy, setPrivacyBusy] = useState(false)
   const [privacyError, setPrivacyError] = useState('')
   const [memoryError, setMemoryError] = useState('')
+  const [setupError, setSetupError] = useState('')
   const [syncStatus, setSyncStatus] = useState<SyncState>('local')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
@@ -341,11 +342,12 @@ const App = () => {
   )
 
   const saveCompanion = async () => {
+    setSetupError('')
     const safe = sanitizeCompanionProfile(companion)
     setCompanion(safe)
     const env = readAppEnv()
     if (session && env.authMode === 'server' && env.apiBaseUrl) {
-      try { setCompanion(await companionProfileApi.save(session, safe)) } catch { /* local copy remains available */ }
+      try { setCompanion(await companionProfileApi.save(session, safe)) } catch { setSetupError('Saved on this device, but the companion profile could not be synced to your account.'); return }
     }
     window.location.hash = '/chat'
   }
@@ -368,6 +370,7 @@ const App = () => {
         <textarea value={companion.interests} maxLength={300} onChange={(e) => setCompanion({ ...companion, interests: e.target.value })} placeholder="Music, films, books, everyday life, creative projects…" />
       </label>
       <button type="button" onClick={() => { void saveCompanion() }}>Save & start chatting</button>
+      {setupError && <p className="warn" role="alert">{setupError}</p>
       <p className="small">This setup is stored locally in preview mode. It does not make the companion human or create an exclusive relationship.</p>
     </section>
   )
@@ -519,8 +522,8 @@ const App = () => {
 
   const deleteNote = (id: string) => setProjectNotes((current) => current.filter((item) => item.id !== id))
   const addMemory = async () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; const local = sanitizeMemory(memoryLabel, memoryValue); const env = readAppEnv(); try { if (session && env.authMode === 'server' && env.apiBaseUrl) { const saved = await memoryApi.save(session, local.label, local.value); setMemories((current) => [saved, ...current]) } else setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } catch { setMemoryError('Saved on this device, but it could not be synced to your account.'); setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } }
-  const forgetMemory = async (item: MemoryItem) => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.remove(session, item.id) } catch { return } } setMemories((current) => removeMemory(current, item.id)) }
-  const forgetAllMemories = async () => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.clear(session) } catch { return } } safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }
+  const forgetMemory = async (item: MemoryItem) => { setMemoryError(''); const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.remove(session, item.id) } catch { setMemoryError('That memory could not be deleted from your account. It has been kept here so the screen does not falsely claim deletion.'); return } } setMemories((current) => removeMemory(current, item.id)) }
+  const forgetAllMemories = async () => { setMemoryError(''); const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.clear(session) } catch { setMemoryError('Memories could not be cleared from your account. Nothing was silently claimed deleted.'); return } } safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }
 
   const renderMemory = () => (
     <section className="panel">
