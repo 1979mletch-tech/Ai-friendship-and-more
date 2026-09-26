@@ -34,8 +34,8 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 
 ## What remains external / requires credentials or professional review
 
-- Production authentication and server-backed per-user data isolation (current V1 data remains local-browser scoped)
-- Real AI-provider/server endpoint integration (current companion response service is deterministic/local)
+- Production authentication and server-backed per-user data isolation require a deployed trusted backend; authenticated frontend API contracts are implemented.
+- Real AI-provider generation requires the deployed server/provider secret; safety-first server orchestration and output backstop are implemented.
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
 - Server-verified entitlements and anti-abuse limits
@@ -88,5 +88,9 @@ npm run test
 
 ## Environment setup
 
-Copy `.env.example` to `.env` and fill only the variables you use.
-Never commit secrets.
+Copy `.env.example` to `.env` and fill only browser-safe variables you use. See `docs/ENVIRONMENT.md`.
+Never put AI-provider, database/service-role, session-signing, Stripe secret, webhook, or private keys in `VITE_*` variables. Never commit secrets.
+
+## Verified repository checkpoint
+
+The repository quality workflow runs install, lint, TypeScript checking, unit tests and a production build. A green workflow verifies the exact candidate commit at code level; it does not substitute for live backend, authorization or staging security tests.
