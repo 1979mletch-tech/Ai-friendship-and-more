@@ -164,6 +164,23 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memories, memories), [memories])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
   useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
+  useEffect(() => {
+    const env = readAppEnv()
+    if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setSyncStatus('local'); return }
+    let mounted = true
+    setSyncStatus('syncing')
+    void Promise.all([loadRemoteConversations(session), memoryApi.list(session), companionProfileApi.get(session)])
+      .then(([remoteConversations, remoteMemories, remoteCompanion]) => {
+        if (!mounted) return
+        setConversations(remoteConversations)
+        setMemories(remoteMemories)
+        setCompanion(sanitizeCompanionProfile(remoteCompanion))
+        if (remoteConversations.length) setActiveConversationId((current) => remoteConversations.some((item) => item.id === current) ? current : remoteConversations[0].id)
+        setSyncStatus('synced')
+      })
+      .catch(() => { if (mounted) setSyncStatus('error') })
+    return () => { mounted = false }
+  }, [session])
 
   const newConversation = () => {
     const id = crypto.randomUUID()
