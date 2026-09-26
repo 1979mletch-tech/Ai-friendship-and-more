@@ -8,6 +8,11 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 
 - Creative-first positioning and topic starters (without excluding general chat use)
 - Chat mode switch: **General support** and **Creative mode**
+- Local conversation history with clear/delete controls
+- User-controlled local memory with add/forget/clear controls
+- Companion naming with persistent AI-identity disclosure
+- Settings/data-control route
+- Dependency-risk and prompt-injection safety responses
 - Creative companion foundations:
   - project memory notes
   - project tags
@@ -33,7 +38,9 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
-- Server-verified entitlements and anti-abuse limits
+- Authenticated server-side AI endpoint, server-verified entitlements and anti-abuse limits
+- Account authentication, cloud conversation sync and user-scoped memory
+- Database migrations/RLS plus two-account isolation verification
 - Production security review, access control model, logging policy, and retention policy
 - Provider legal/data-processing review and final privacy policy language
 - Future WebXR + Three.js immersive implementation, device testing, and voice/spatial privacy controls
@@ -45,6 +52,7 @@ Current implementation is intentionally safe:
 - If `VITE_BILLING_PROVIDER=none` (default), pricing renders in preview mode.
 - If `VITE_BILLING_PROVIDER=stripe` but required keys/price IDs are missing, UI shows setup-needed state.
 - App does **not** fake successful payments.
+- Paid plans remain informational and cannot be selected for higher local limits until a server-verified subscription exists.
 
 ### Required production billing pieces
 
@@ -84,4 +92,12 @@ npm run test
 ## Environment setup
 
 Copy `.env.example` to `.env` and fill only the variables you use.
-Never commit secrets.
+Never commit secrets. **Do not put OpenAI or other private AI-provider keys in a `VITE_*` variable**; Vite exposes those values to the browser. Production AI calls must use an authenticated server/edge endpoint.
+
+## Current data boundary
+
+The current build stores chat history, project notes, consent, companion name and user-controlled memory in browser localStorage. Guest and signed-in account data use separate browser keys. The free plan is enforced in preview; any old paid plan selection is ignored. Browser storage is not encrypted or an authenticated private vault. Account-backed cloud backup is manual and remains unverified in staging.
+
+See `SECURITY.md`, `THREAT_MODEL.md`, `DEPLOYMENT.md`, and `PRODUCTION_CHECKLIST.md` before production deployment.
+
+The repository now contains Supabase migrations and authenticated Edge Function foundations for cloud conversations/memory, live AI, per-user usage limiting, and account deletion. These are **code-built foundations** until configured and verified against a real Supabase staging project. Do not describe them as live-tested until that verification is complete.

@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{homeFeatures,homeStarters}from'./homeContent';describe('home content',()=>{it('has four starters',()=>expect(homeStarters).toHaveLength(4));it('has three feature pillars',()=>expect(homeFeatures).toHaveLength(3));it('includes memory control',()=>expect(homeFeatures.some(x=>x.title.includes('Memory'))).toBe(true))})

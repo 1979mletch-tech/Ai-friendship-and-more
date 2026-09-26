@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{isInternalCta,primaryCta,secondaryCta}from'./cta';describe('homepage CTA',()=>{it('opens chat internally',()=>expect(primaryCta.href).toBe('/chat'));it('links pricing internally',()=>expect(secondaryCta.href).toBe('/pricing'));it('rejects protocol-relative target',()=>expect(isInternalCta('//evil.example')).toBe(false))})
