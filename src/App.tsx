@@ -22,6 +22,7 @@ import { loadRemoteConversations } from './services/conversationSync'
 import { conversationApi } from './services/conversationApi'
 import { getSafeServerReply } from './services/safeServerReply'
 import { syncLabel, type SyncState } from './utils/syncState'
+import { settledValue, syncFromOutcomes } from './utils/partialHydration'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { nextConversationId, replaceConversation } from './utils/conversationState'
 import { migrateConversations } from './utils/conversationMigration'
@@ -182,16 +183,15 @@ const App = () => {
     if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setSyncStatus('local'); return }
     let mounted = true
     setSyncStatus('syncing')
-    void Promise.all([loadRemoteConversations(session), memoryApi.list(session), companionProfileApi.get(session)])
-      .then(([remoteConversations, remoteMemories, remoteCompanion]) => {
-        if (!mounted) return
-        setConversations(remoteConversations)
-        setMemories(remoteMemories)
-        if (remoteCompanion) setCompanion(sanitizeCompanionProfile(remoteCompanion))
-        if (remoteConversations.length) setActiveConversationId((current) => remoteConversations.some((item) => item.id === current) ? current : remoteConversations[0].id)
-        setSyncStatus('synced')
-      })
-      .catch(() => { if (mounted) setSyncStatus('error') })
+    void Promise.allSettled([loadRemoteConversations(session), memoryApi.list(session), companionProfileApi.get(session)]).then((results) => {
+      if (!mounted) return
+      const conversationsResult = settledValue(results[0]); const memoriesResult = settledValue(results[1]); const profileResult = settledValue(results[2])
+      const remoteConversations = conversationsResult.value
+      if (remoteConversations) { setConversations(remoteConversations); if (remoteConversations.length) setActiveConversationId((current) => remoteConversations.some((item) => item.id === current) ? current : remoteConversations[0].id) }
+      if (memoriesResult.value) setMemories(memoriesResult.value)
+      if (profileResult.value) setCompanion(sanitizeCompanionProfile(profileResult.value))
+      setSyncStatus(syncFromOutcomes([conversationsResult, memoriesResult, profileResult]))
+    })
     return () => { mounted = false }
   }, [session])
 
