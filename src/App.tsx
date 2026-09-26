@@ -186,6 +186,7 @@ const App = () => {
     if (chatBusy) return
     setChatBusy(true); setChatError('')
     let response: string
+    let persistedConversationId = activeConversationId
     try {
       const env = readAppEnv()
       if (session && env.authMode === 'server' && env.apiBaseUrl) {
@@ -193,6 +194,7 @@ const App = () => {
         if (!conversations.some((item) => item.id === activeConversationId)) {
           const created = await conversationApi.create(session)
           serverConversationId = created.id
+          persistedConversationId = created.id
           setActiveConversationId(created.id)
         }
         response = (await conversationApi.append(session, serverConversationId, userText, chatMode)).reply
@@ -205,7 +207,7 @@ const App = () => {
       return
     }
     setConversations((current) => {
-      const effectiveId = activeConversationId
+      const effectiveId = persistedConversationId
       const existing = current.find((item) => item.id === effectiveId) || newLocalConversation(effectiveId)
       const updated = appendExchange(existing, userText, response)
       return [updated, ...current.filter((item) => item.id !== activeConversationId)]
