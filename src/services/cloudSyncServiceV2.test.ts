@@ -27,6 +27,14 @@ describe('memory backup', () => {
     expect(calls.remove).not.toHaveBeenCalled()
   })
 
+  it('inserts only one copy of a new memory despite case or whitespace differences', async () => {
+    calls.list.mockResolvedValue([])
+    calls.insert.mockResolvedValue([])
+    await backupMemoryItems(session, ['  A novel ', 'a novel', 'A NOVEL', 'A painting'])
+    expect(calls.insert).toHaveBeenCalledTimes(2)
+    expect(calls.insert.mock.calls.map((call) => call[2].value)).toEqual(['A novel', 'A painting'])
+  })
+
   it('updates a stable conversation ID and recreates it if the remote row is missing', async () => {
     calls.update.mockResolvedValueOnce([{ id: 'stable-id' }]).mockResolvedValueOnce([])
     calls.insert.mockResolvedValue([{ id: 'stable-id' }])
