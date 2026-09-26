@@ -1,4 +1,5 @@
 import type { Session } from './apiClient'
+import { isSafeConversationId } from '../utils/objectIdPolicy'
 export type RemoteConversation={id:string;title:string;updatedAt:string}
 export type RemoteMessage={id:string;conversationId:string;role:'user'|'assistant';text:string;createdAt:string}
 const headers=(s:Session)=>({'Content-Type':'application/json',Authorization:`Bearer ${s.accessToken}`})
@@ -7,6 +8,6 @@ const call=async<T>(path:string,s:Session,init:RequestInit={}):Promise<T>=>{cons
 export const conversationApi={
  list:(s:Session)=>call<RemoteConversation[]>('/conversations',s),
  create:(s:Session)=>call<RemoteConversation>('/conversations',s,{method:'POST',body:'{}'}),
- messages:(s:Session,id:string)=>call<RemoteMessage[]>(`/conversations/${encodeURIComponent(id)}/messages`,s),
- remove:(s:Session,id:string)=>call<void>(`/conversations/${encodeURIComponent(id)}`,s,{method:'DELETE'})
+ messages:(s:Session,id:string)=>{if(!isSafeConversationId(id))throw new Error('Invalid conversation identifier.');return call<RemoteMessage[]>(`/conversations/${encodeURIComponent(id)}/messages`,s)},
+ remove:(s:Session,id:string)=>{if(!isSafeConversationId(id))throw new Error('Invalid conversation identifier.');return call<void>(`/conversations/${encodeURIComponent(id)}`,s,{method:'DELETE'})}
 }
