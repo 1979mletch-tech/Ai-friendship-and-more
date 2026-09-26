@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{canSend,markSending,markSettled}from'./submitGuard'
+describe('submit guard',()=>{it('blocks duplicate pending and rapid submissions',()=>{const g={lastAt:0,pending:false};const sending=markSending(g,1000);expect(canSend(sending,1200)).toBe(false);const done=markSettled(sending);expect(canSend(done,1200)).toBe(false);expect(canSend(done,1600)).toBe(true)})})
