@@ -31,7 +31,12 @@ export const backupConversation = async (
 ) => {
   if (!messages.length) return []
   const row = { title: title.trim().slice(0, 120) || 'Conversation', mode, messages: messages.slice(-200), updated_at: new Date().toISOString() }
-  return existingId ? updateUserRow(session, 'conversations', existingId, row) : insertUserRow(session, 'conversations', row)
+  if (existingId) {
+    const updated = await updateUserRow(session, 'conversations', existingId, row)
+    if (Array.isArray(updated) && updated.length) return updated
+    return insertUserRow(session, 'conversations', { ...row, id: existingId })
+  }
+  return insertUserRow(session, 'conversations', row)
 }
 export const deleteCloudConversation = (session: AuthSession, id: string) =>
   deleteUserRow(session, 'conversations', id)
