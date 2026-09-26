@@ -27,6 +27,14 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) return json({ error: 'Invalid session' }, 401)
 
+  // Production age assurance must be written to trusted app_metadata by a
+  // server-side verification flow. Client-editable user metadata is never trusted.
+  const requireAdultVerification = Deno.env.get('AGE_ASSURANCE_REQUIRED') === 'true'
+  const adultVerified = user.app_metadata?.adult_verified === true
+  if (requireAdultVerification && !adultVerified) {
+    return json({ error: 'Adult eligibility verification required' }, 403)
+  }
+
   const rateWindow = new Date(Date.now() - 60_000).toISOString()
   const { count } = await supabase
     .from('ai_usage_events')
