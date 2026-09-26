@@ -401,6 +401,7 @@ const App = () => {
           Send
         </button>
       </div>
+      {chatError && <p className="warn" role="alert">{chatError}</p>}
       <p className="small">
         Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
@@ -538,9 +539,14 @@ const App = () => {
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <div className="starters">
+        <button type="button" onClick={() => downloadDataExport(companion, conversations, projectNotes)}>
+          Export my local data
+        </button>
+        <button type="button" onClick={clearLocalData}>
+          Delete my local memory + history
+        </button>
+      </div>
     </section>
   )
 
