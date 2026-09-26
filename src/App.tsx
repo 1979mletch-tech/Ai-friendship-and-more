@@ -31,6 +31,7 @@ import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { shouldResetForAccountChange } from './utils/accountIsolation'
+import { sessionStorageValue } from './utils/sessionStoragePolicy'
 
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -86,7 +87,7 @@ const getLocalDayKey = (date: Date): string => {
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
   const previousUserId = useRef<string | undefined>(undefined)
-  const [session, setSession] = useState<Session | null>(() => safeLocalStorageGet(STORAGE_KEYS.session, null))
+  const [session, setSession] = useState<Session | null>(() => sessionStorageValue(safeLocalStorageGet(STORAGE_KEYS.session, null)))
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
