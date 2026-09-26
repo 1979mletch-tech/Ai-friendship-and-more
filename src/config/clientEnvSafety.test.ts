@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{unsafeClientEnvNames}from'./clientEnvSafety'
+describe('client env safety',()=>{it('flags secret-shaped VITE variables',()=>expect(unsafeClientEnvNames({VITE_OPENAI_API_KEY:'x',VITE_API_BASE_URL:'https://api.test'})).toEqual(['VITE_OPENAI_API_KEY']));it('allows publishable Stripe key',()=>expect(unsafeClientEnvNames({VITE_STRIPE_PUBLIC_KEY:'pk_test'})).toEqual([]))})
