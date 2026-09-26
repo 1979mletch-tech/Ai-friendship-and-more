@@ -47,6 +47,10 @@ export const loadSession = (): AuthSession | null => {
   try {
     const value = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
     if (!value?.accessToken || !value?.user?.id) return null
+    if (typeof value.expiresAt !== 'number' || value.expiresAt <= Date.now()) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
     return value as AuthSession
   } catch { return null }
 }
