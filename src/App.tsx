@@ -7,6 +7,8 @@ import { disclosureText } from './utils/safety'
 import { getCompanionReply } from './services/replyOrchestrator'
 import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
 import { downloadDataExport } from './utils/downloadExport'
+import { normalizeRemoteExport } from './utils/remoteExport'
+import { userSafeError } from './utils/userSafeError'
 import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
 import { billingApi, type BillingStatus } from './services/billingApi'
 import { trustedPlan } from './utils/billingEntitlement'
@@ -198,7 +200,7 @@ const App = () => {
     if (session && env.authMode === 'server' && env.apiBaseUrl) {
       setChatBusy(true)
       try { const created = await conversationApi.create(session); setConversations((current) => [newLocalConversation(created.id), ...current]); setActiveConversationId(created.id) }
-      catch (error) { setChatError(error instanceof Error ? error.message : 'A new conversation could not be created.') }
+      catch (error) { setChatError(userSafeError(error,'A new conversation could not be created.')) }
       finally { setChatBusy(false) }
     } else { const id = crypto.randomUUID(); setConversations((current) => [newLocalConversation(id), ...current]); setActiveConversationId(id) }
     window.location.hash = '/chat'
@@ -206,7 +208,7 @@ const App = () => {
 
   const deleteConversation = async (id: string) => {
     const env = readAppEnv(); setChatError('')
-    if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await conversationApi.remove(session,id) } catch(error) { setChatError(error instanceof Error?error.message:'Conversation could not be deleted.'); return } }
+    if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await conversationApi.remove(session,id) } catch(error) { setChatError(userSafeError(error,'Conversation could not be deleted.')); return } }
     setConversations((current) => current.filter((item) => item.id !== id)); if (activeConversationId === id) setActiveConversationId('default')
   }
 
@@ -236,7 +238,7 @@ const App = () => {
         response = await getCompanionReply({ text: userText, mode: chatMode, session, conversationId: activeConversationId })
       }
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'The companion reply could not be completed.')
+      setChatError(userSafeError(error,'The companion reply could not be completed.'))
       setChatBusy(false)
       return
     }
@@ -292,7 +294,7 @@ const App = () => {
         ? await authApi.signIn(email, authPassword)
         : await authApi.signUp(email, authPassword, authName.trim())
       setSession(next); setAuthPassword(''); window.location.hash = '/setup'
-    } catch (error) { setAuthError(error instanceof Error ? error.message : 'Sign in failed.') }
+    } catch (error) { setAuthError(userSafeError(error,'Sign in failed.')) }
     finally { setAuthBusy(false) }
   }
 
@@ -305,7 +307,7 @@ const App = () => {
       safeLocalStorageDelete(STORAGE_KEYS.session, STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memories, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation, STORAGE_KEYS.companion)
       setSession(null); setProjectNotes([]); setMemories([]); setConversations([]); setActiveConversationId('default')
       window.location.hash = '/'
-    } catch (error) { setAuthError(error instanceof Error ? error.message : 'Account deletion failed.') }
+    } catch (error) { setAuthError(userSafeError(error,'Account deletion failed.')) }
     finally { setAuthBusy(false) }
   }
 
@@ -556,7 +558,7 @@ const App = () => {
     if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setBillingError('Sign in to a configured production account before starting checkout.'); return }
     setBillingBusy(true); setBillingError('')
     try { const result = await billingApi.checkout(session, nextPlan); window.location.assign(trustedRedirect(result.url, 'checkout')) }
-    catch (error) { setBillingError(error instanceof Error ? error.message : 'Checkout could not be started.') }
+    catch (error) { setBillingError(userSafeError(error,'Checkout could not be started.')) }
     finally { setBillingBusy(false) }
   }
 
@@ -564,7 +566,7 @@ const App = () => {
     if (!session || !serverBillingMode) { setBillingError('Sign in to manage a subscription.'); return }
     setBillingBusy(true); setBillingError('')
     try { const result = await billingApi.portal(session); window.location.assign(trustedRedirect(result.url, 'portal')) }
-    catch (error) { setBillingError(error instanceof Error ? error.message : 'Billing portal could not be opened.') }
+    catch (error) { setBillingError(userSafeError(error,'Billing portal could not be opened.')) }
     finally { setBillingBusy(false) }
   }
 
@@ -610,7 +612,7 @@ const App = () => {
     </section>
   )
 
-  const exportMyData = async () => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { const remote = await privacyApi.exportData(session); downloadDataExport(companion, remote, { approvedMemories: memories, projectNotes }); return } catch { /* retain local export availability */ } } downloadDataExport(companion, conversations, { approvedMemories: memories, projectNotes }) }
+  const exportMyData = async () => { const env = readAppEnv(); setPrivacyError(''); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { const remote = normalizeRemoteExport(await privacyApi.exportData(session),companion,{approvedMemories:memories,projectNotes}); downloadDataExport(remote.companion,remote.conversations,remote.memories); return } catch { setPrivacyError('Account export could not be downloaded. A local-device export was created instead.') } } downloadDataExport(companion, conversations, { approvedMemories: memories, projectNotes }) }
 
   const renderPrivacy = () => (
     <section className="panel">
