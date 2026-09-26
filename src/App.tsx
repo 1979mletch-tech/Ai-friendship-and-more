@@ -10,6 +10,8 @@ import { downloadDataExport } from './utils/downloadExport'
 import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
 import { billingApi } from './services/billingApi'
 import { trustedRedirect } from './utils/redirectPolicy'
+import { companionProfileApi } from './services/companionProfileApi'
+import { sanitizeCompanionProfile } from './utils/companionProfile'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -270,6 +272,16 @@ const App = () => {
     </section>
   )
 
+  const saveCompanion = async () => {
+    const safe = sanitizeCompanionProfile(companion)
+    setCompanion(safe)
+    const env = readAppEnv()
+    if (session && env.authMode === 'server' && env.apiBaseUrl) {
+      try { setCompanion(await companionProfileApi.save(session, safe)) } catch { /* local copy remains available */ }
+    }
+    window.location.hash = '/chat'
+  }
+
   const renderSetup = () => (
     <section className="panel">
       <h2>Set up your companion</h2>
@@ -287,7 +299,7 @@ const App = () => {
       <label>Things you enjoy talking about
         <textarea value={companion.interests} maxLength={300} onChange={(e) => setCompanion({ ...companion, interests: e.target.value })} placeholder="Music, films, books, everyday life, creative projects…" />
       </label>
-      <button type="button" onClick={() => { window.location.hash = '/chat' }}>Save & start chatting</button>
+      <button type="button" onClick={() => { void saveCompanion() }}>Save & start chatting</button>
       <p className="small">This setup is stored locally in preview mode. It does not make the companion human or create an exclusive relationship.</p>
     </section>
   )
