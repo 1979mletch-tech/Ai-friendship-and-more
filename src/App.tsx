@@ -232,20 +232,41 @@ const App = () => {
       <div className="starters">
         {['Help me break a creative block', 'Give me 3 songwriting ideas', 'Reflect on my week kindly', 'Plan my next focused hour'].map(
           (starter) => (
-            <button
-              key={starter}
-              type="button"
-              onClick={() => {
-                window.location.hash = '/chat'
-                setChatMode('creative')
-                setInput(starter)
-              }}
-            >
-              {starter}
+            <button key={starter} type="button" onClick={() => { window.location.hash = '/chat'; setChatMode('creative'); setInput(starter) }}>
+              <span className="starter-icon">✦</span>{starter}<span aria-hidden="true">→</span>
             </button>
           ),
         )}
       </div>
+      <section className="feature-strip" aria-label="AI Aurora highlights">
+        <article><span>01</span><h3>Talk it through</h3><p>Conversation for everyday thoughts, decisions and reflection without pretending the AI is human.</p></article>
+        <article><span>02</span><h3>Create with Aurora</h3><p>Move through creative blocks, develop ideas and keep useful project context close at hand.</p></article>
+        <article><span>03</span><h3>Memory you control</h3><p>Choose what Aurora may remember, review it whenever you want and remove it when you are done.</p></article>
+      </section>
+      <section className="showcase">
+        <div>
+          <p className="eyebrow">BUILT AROUND YOU</p>
+          <h2>One place to think, make and come back to.</h2>
+          <p>Switch between everyday conversation and creative mode. Keep the pieces that matter. Leave behind the ones that do not.</p>
+          <a className="text-link" href="#/memory">See memory controls →</a>
+        </div>
+        <div className="conversation-card">
+          <p className="mini-label">CREATIVE MODE</p>
+          <div className="sample user-sample">I have the beginning of an idea, but I can’t see where it goes.</div>
+          <div className="sample aurora-sample"><strong>Aurora</strong><br />Tell me the part that still feels alive. We can explore a few directions without forcing it.</div>
+        </div>
+      </section>
+      <section className="privacy-callout">
+        <div><p className="eyebrow">CLEAR BY DESIGN</p><h2>Your conversation should come with controls.</h2></div>
+        <p>AI Aurora keeps its AI identity visible, gives you direct memory and deletion controls, and separates preview features from services that still require live verification.</p>
+        <a className="secondary-cta" href="#/privacy">Privacy centre</a>
+      </section>
+      <section className="final-cta">
+        <div className="aurora-mini">A</div>
+        <h2>There’s room here for the thought you haven’t finished yet.</h2>
+        <p>Start a conversation, bring an idea, or simply think out loud.</p>
+        <a className="primary-cta" href="#/chat">Start with Aurora</a>
+      </section>
     </section>
   )
 
