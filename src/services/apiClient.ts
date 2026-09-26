@@ -1,3 +1,4 @@
+import { serviceFetch } from './serviceFetch'
 import { readAppEnv } from '../config/env'
 
 export type SessionUser = { id: string; email: string; displayName?: string }
@@ -6,7 +7,7 @@ export type Session = { user: SessionUser; accessToken: string }
 const request = async <T>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
   const { apiBaseUrl } = readAppEnv()
   if (!apiBaseUrl) throw new Error('Server API is not configured.')
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await serviceFetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
   })
