@@ -13,6 +13,7 @@ import { trustedRedirect } from './utils/redirectPolicy'
 import { companionProfileApi } from './services/companionProfileApi'
 import { sanitizeCompanionProfile } from './utils/companionProfile'
 import { sanitizeMemory, removeMemory, type MemoryItem } from './utils/memoryStore'
+import { memoryApi } from './services/memoryApi'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -456,7 +457,9 @@ const App = () => {
   )
 
   const deleteNote = (id: string) => setProjectNotes((current) => current.filter((item) => item.id !== id))
-  const addMemory = () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; setMemories((current) => [sanitizeMemory(memoryLabel, memoryValue), ...current]); setMemoryLabel(''); setMemoryValue('') }
+  const addMemory = async () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; const local = sanitizeMemory(memoryLabel, memoryValue); const env = readAppEnv(); try { if (session && env.authMode === 'server' && env.apiBaseUrl) { const saved = await memoryApi.save(session, local.label, local.value); setMemories((current) => [saved, ...current]) } else setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } catch { setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } }
+  const forgetMemory = async (item: MemoryItem) => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.remove(session, item.id) } catch { return } } setMemories((current) => removeMemory(current, item.id)) }
+  const forgetAllMemories = async () => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.clear(session) } catch { return } } safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }
 
   const renderMemory = () => (
     <section className="panel">
@@ -466,9 +469,9 @@ const App = () => {
         <label>Memory label<input value={memoryLabel} maxLength={60} onChange={(e) => setMemoryLabel(e.target.value)} placeholder="e.g. Favourite music" /></label>
         <label>What to remember<textarea value={memoryValue} maxLength={500} onChange={(e) => setMemoryValue(e.target.value)} placeholder="Only save something you want remembered." /></label>
       </div>
-      <button type="button" onClick={addMemory} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
-      {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" onClick={() => setMemories((current) => removeMemory(current, item.id))}>Forget this</button></li>)}</ul>}
-      <button type="button" disabled={memories.length === 0} onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }}>Forget all approved memories</button>
+      <button type="button" onClick={() => { void addMemory() }} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
+      {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" onClick={() => { void forgetMemory(item) }}>Forget this</button></li>)}</ul>}
+      <button type="button" disabled={memories.length === 0} onClick={() => { void forgetAllMemories() }}>Forget all approved memories</button>
       <h3>Creative project notes</h3>
       {visibleProjectNotes.length === 0 ? <p className="small">No project notes saved.</p> : <ul>{visibleProjectNotes.map((item) => <li key={item.id}><strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}<button type="button" onClick={() => deleteNote(item.id)}>Delete note</button></li>)}</ul>}
     </section>
