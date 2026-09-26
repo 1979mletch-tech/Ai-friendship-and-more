@@ -9,6 +9,7 @@ import { hasCloudAuth } from './config/cloud'
 import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
 import { sendCloudChat } from './services/chatService'
 import { backupConversation, backupMemoryItems } from './services/cloudSyncService'
+import { createExportBundle, downloadJson } from './utils/exportData'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -400,7 +401,12 @@ const App = () => {
       <p className="small">AI Friendship always remains clearly identified as AI even when you choose a companion name.</p>
       <h3>Data controls</h3>
       <p className="small">Deleting local data removes chat, project notes and memory from this browser. It does not claim to delete data from external providers.</p>
-      <button type="button" onClick={clearLocalData}>Delete local chat, memory + project data</button>
+      <div className="account-actions">
+        <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
+          messages, memory: memoryItems, projectNotes, companionName,
+        }))}>Export my local data</button>
+        <button type="button" onClick={clearLocalData}>Delete local chat, memory + project data</button>
+      </div>
       <h3>Account status</h3>
       <p className="warn">Account sign-in and cloud sync are not enabled in this preview build. Do not treat this device-only storage as a private account vault.</p>
     </section>
@@ -527,9 +533,12 @@ const App = () => {
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <div className="account-actions">
+        <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
+          messages, memory: memoryItems, projectNotes, companionName,
+        }))}>Export my local data</button>
+        <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
+      </div>
     </section>
   )
 
