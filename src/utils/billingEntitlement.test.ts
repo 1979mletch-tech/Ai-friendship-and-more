@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{trustedPlan}from'./billingEntitlement'
+describe('billing entitlement',()=>{it('never grants local paid plan in server mode',()=>{expect(trustedPlan(true,undefined,'pro-monthly')).toBe('free');expect(trustedPlan(true,{planId:'pro-monthly',status:'active'},'free')).toBe('pro-monthly');expect(trustedPlan(false,undefined,'pro-annual')).toBe('pro-annual')})})
