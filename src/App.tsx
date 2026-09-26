@@ -560,6 +560,14 @@ const App = () => {
     finally { setBillingBusy(false) }
   }
 
+  const openBillingPortal = async () => {
+    if (!session || !serverBillingMode) { setBillingError('Sign in to manage a subscription.'); return }
+    setBillingBusy(true); setBillingError('')
+    try { const result = await billingApi.portal(session); window.location.assign(trustedRedirect(result.url, 'portal')) }
+    catch (error) { setBillingError(error instanceof Error ? error.message : 'Billing portal could not be opened.') }
+    finally { setBillingBusy(false) }
+  }
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -594,6 +602,7 @@ const App = () => {
           </article>
         ))}
       </div>
+      {billingStatus?.status === 'active' && <button type="button" disabled={billingBusy} onClick={() => { void openBillingPortal() }}>Manage subscription</button>}
       {billingError && <p className="warn" role="alert">{billingError}</p>}
       <p className="small">
         Current plan: {effectivePlanId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
