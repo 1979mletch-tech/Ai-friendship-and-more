@@ -19,7 +19,7 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - Studio Friend Pro ($9.99/month proposed)
   - Studio Friend Annual ($79/year proposed)
 - Subscription service abstraction + environment-configurable billing setup state (Stripe-ready boundary)
-- Plan entitlements + usage-limit helpers (honest local UI states)
+- Free-plan local usage limits; paid plans are previews until server-verified billing exists
 - Privacy Centre secure-talk copy in plain language:
   - encryption in transit expectation (HTTPS/TLS in production)
   - secrets via environment variables
@@ -32,10 +32,12 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 ## What remains external / requires credentials or professional review
 
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
+- Real AI chat, authentication, account-scoped persistent data, and database migrations (the current chat uses fixed local responses)
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
 - Server-verified entitlements and anti-abuse limits
 - Production security review, access control model, logging policy, and retention policy
 - Provider legal/data-processing review and final privacy policy language
+- Professionally reviewed crisis handling; current keyword detection can miss indirect or nuanced language
 - Future WebXR + Three.js immersive implementation, device testing, and voice/spatial privacy controls
 
 ## Billing foundation notes
@@ -83,5 +85,5 @@ npm run test
 
 ## Environment setup
 
-Copy `.env.example` to `.env` and fill only the variables you use.
-Never commit secrets.
+Copy `.env.example` to `.env` and fill only the public billing preview variables you use.
+Never put secret keys in `VITE_` variables: these are bundled into public browser JavaScript.
