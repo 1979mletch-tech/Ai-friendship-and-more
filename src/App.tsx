@@ -3,10 +3,11 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, isCrisisText } from './utils/safety'
+import { disclosureText } from './utils/safety'
+import { createCompanionReply } from './services/companionService'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -33,7 +34,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -127,13 +128,7 @@ const App = () => {
     const userText = input.trim()
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
-    const crisis = isCrisisText(userText)
-
-    const response = crisis
-      ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
-      : chatMode === 'creative'
-        ? 'Let’s keep your creative momentum going. Want a quick spark, a project check-in, or gentle feedback on your latest idea?'
-        : 'I’m here with you. We can reflect, brainstorm, or just talk through what matters right now.'
+    const response = createCompanionReply(userText, chatMode)
 
     const localDayKey = getLocalDayKey(new Date())
 
@@ -314,6 +309,37 @@ const App = () => {
     </section>
   )
 
+  const deleteNote = (id: string) => setProjectNotes((current) => current.filter((item) => item.id !== id))
+
+  const renderMemory = () => (
+    <section className="panel">
+      <h2>Your memory</h2>
+      <p>You control what AI Friendship keeps on this device. Save only things you want remembered.</p>
+      {visibleProjectNotes.length === 0 ? <p className="small">No saved memories yet.</p> : (
+        <ul>{visibleProjectNotes.map((item) => (
+          <li key={item.id}><strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
+            <button type="button" onClick={() => deleteNote(item.id)}>Forget this</button>
+          </li>
+        ))}</ul>
+      )}
+      <button type="button" onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.notes); setProjectNotes([]) }}>Forget all saved memories</button>
+    </section>
+  )
+
+  const renderSettings = () => (
+    <section className="panel">
+      <h2>Settings & data controls</h2>
+      <p className="small">AI Friendship is always identified as AI. These controls affect data stored locally in this browser.</p>
+      <label className="consent">
+        <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
+        Allow companion chat on this device
+      </label>
+      <p>Current plan: <strong>{planId}</strong></p>
+      <button type="button" onClick={clearLocalData}>Delete local chat history + memory</button>
+      <p className="warn">Deleting local data cannot be undone.</p>
+    </section>
+  )
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -416,6 +442,12 @@ const App = () => {
     case '/chat':
       page = renderChat()
       break
+    case '/memory':
+      page = renderMemory()
+      break
+    case '/settings':
+      page = renderSettings()
+      break
     case '/pricing':
       page = renderPricing()
       break
@@ -437,6 +469,8 @@ const App = () => {
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
+          <a href="#/memory">Memory</a>
+          <a href="#/settings">Settings</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>
