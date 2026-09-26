@@ -205,9 +205,11 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes)
+    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
     setMessages([])
     setProjectNotes([])
+    setConversations([])
+    setActiveConversationId('default')
   }
 
   const runAuth = async (kind: 'login' | 'register') => {
@@ -226,6 +228,19 @@ const App = () => {
     finally { setAuthBusy(false) }
   }
 
+  const deleteAccount = async () => {
+    if (!session) return
+    if (!window.confirm('Delete your account and local AI Friendship data? This cannot be undone.')) return
+    setAuthBusy(true); setAuthError('')
+    try {
+      await authApi.deleteAccount(session.accessToken)
+      safeLocalStorageDelete(STORAGE_KEYS.session, STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation, STORAGE_KEYS.companion)
+      setSession(null); setMessages([]); setProjectNotes([]); setConversations([]); setActiveConversationId('default')
+      window.location.hash = '/'
+    } catch (error) { setAuthError(error instanceof Error ? error.message : 'Account deletion failed.') }
+    finally { setAuthBusy(false) }
+  }
+
   const signOut = async () => {
     if (session) { try { await authApi.signOut(session.accessToken) } catch { /* clear local session regardless */ } }
     setSession(null)
@@ -236,7 +251,9 @@ const App = () => {
       <h2>Account</h2>
       {session ? (<>
         <p>Signed in as <strong>{session.user.displayName || session.user.email}</strong></p>
-        <button type="button" onClick={signOut}>Sign out</button>
+        <button type="button" onClick={signOut}>Sign out</button>{' '}
+        <button type="button" disabled={authBusy} onClick={deleteAccount}>Delete account</button>
+        {authError && <p className="warn" role="alert">{authError}</p>}
       </>) : (<>
         <p className="small">Create an account or sign in when the secure server is configured. Passwords are never placed in URLs.</p>
         <div className="grid">
