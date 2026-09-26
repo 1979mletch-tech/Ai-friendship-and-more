@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ensureFreshSession, loadSession, saveSession, signIn, type AuthSession } from './authService'
+import { ensureFreshSession, loadSession, requestPasswordReset, saveSession, signIn, signUp, type AuthSession } from './authService'
 
 const mockStorage = () => {
   const store = new Map<string, string>()
@@ -74,5 +74,13 @@ describe('auth service', () => {
     vi.stubEnv('VITE_SUPABASE_URL', '')
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
     await expect(signIn('a@example.test', 'password123')).rejects.toThrow(/not configured/i)
+  })
+
+  it('rejects invalid registration and recovery inputs before network requests', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    await expect(signUp('bad-email', 'strongpassword')).rejects.toThrow(/valid email/i)
+    await expect(signUp('person@example.test', 'short')).rejects.toThrow(/password/i)
+    await expect(requestPasswordReset('bad-email')).rejects.toThrow(/valid email/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
