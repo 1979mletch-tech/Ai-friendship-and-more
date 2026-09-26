@@ -8,7 +8,8 @@ import { getCompanionReply } from './services/replyOrchestrator'
 import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
 import { downloadDataExport } from './utils/downloadExport'
 import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
-import { billingApi } from './services/billingApi'
+import { billingApi, type BillingStatus } from './services/billingApi'
+import { trustedPlan } from './utils/billingEntitlement'
 import { trustedRedirect } from './utils/redirectPolicy'
 import { companionProfileApi } from './services/companionProfileApi'
 import { sanitizeCompanionProfile } from './utils/companionProfile'
@@ -88,6 +89,7 @@ const App = () => {
   const [chatError, setChatError] = useState('')
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState('')
+  const [billingStatus, setBillingStatus] = useState<BillingStatus>()
   const [privacyBusy, setPrivacyBusy] = useState(false)
   const [privacyError, setPrivacyError] = useState('')
   const [memoryError, setMemoryError] = useState('')
@@ -117,7 +119,9 @@ const App = () => {
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
 
   const billing = useMemo(() => getSubscriptionState(), [])
-  const entitlements = useMemo(() => getEntitlements(planId), [planId])
+  const serverBillingMode = Boolean(session && readAppEnv().authMode === 'server' && readAppEnv().apiBaseUrl)
+  const effectivePlanId = trustedPlan(serverBillingMode, billingStatus, planId)
+  const entitlements = useMemo(() => getEntitlements(effectivePlanId), [effectivePlanId])
   const visibleProjectNotes = useMemo(
     () => applyProjectNotesLimit(projectNotes, planId),
     [planId, projectNotes],
@@ -168,6 +172,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memories, memories), [memories])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
   useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
+  useEffect(() => { if (!serverBillingMode || !session) { setBillingStatus(undefined); return }; void billingApi.status(session).then(setBillingStatus).catch(() => setBillingStatus(undefined)) }, [session, serverBillingMode])
   useEffect(() => {
     const env = readAppEnv()
     if (!session || env.authMode !== 'server' || !env.apiBaseUrl) { setSyncStatus('local'); return }
@@ -591,7 +596,7 @@ const App = () => {
       </div>
       {billingError && <p className="warn" role="alert">{billingError}</p>}
       <p className="small">
-        Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
+        Current plan: {effectivePlanId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
       </p>
     </section>
   )
