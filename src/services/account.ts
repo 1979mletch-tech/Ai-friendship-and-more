@@ -1,5 +1,7 @@
 export type Account = { id: string; email: string }
 export type SavedMessage = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string }
+export type SavedNote = { id: string; project: string; tags: string; note: string }
+export type Companion = { name: string; tone: string }
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api/${path}`, {
@@ -19,7 +21,13 @@ export const accountApi = {
   login: (email: string, password: string) => request<{ user: Account }>('login', 'POST', { email, password }),
   logout: () => request('logout', 'POST', {}),
   messages: () => request<{ messages: SavedMessage[] }>('messages'),
-  saveMessage: (role: SavedMessage['role'], text: string) => request<{ message: SavedMessage }>('messages', 'POST', { role, text }),
+  chat: (text: string) => request<{ messages: SavedMessage[] }>('chat', 'POST', { text }),
   deleteMessages: () => request('messages', 'DELETE'),
+  companion: () => request<{ companion: Companion }>('companion'),
+  saveCompanion: (companion: Companion) => request<{ companion: Companion }>('companion', 'POST', companion),
+  notes: () => request<{ notes: SavedNote[] }>('notes'),
+  addNote: (note: Omit<SavedNote, 'id'>) => request<{ note: SavedNote }>('notes', 'POST', note),
+  deleteNote: (id: string) => request(`notes/${encodeURIComponent(id)}`, 'DELETE'),
+  deleteNotes: () => request('notes', 'DELETE'),
   deleteAccount: () => request('account', 'DELETE'),
 }

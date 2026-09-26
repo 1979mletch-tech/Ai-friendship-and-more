@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { accountApi } from './services/account'
 import type { Account } from './services/account'
+import type { Companion } from './services/account'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
@@ -61,6 +62,8 @@ const App = () => {
   const [accountError, setAccountError] = useState('')
   const [accountBusy, setAccountBusy] = useState(false)
   const [serverMessages, setServerMessages] = useState<ChatMessage[]>([])
+  const [serverNotes, setServerNotes] = useState<ProjectNote[]>([])
+  const [companion, setCompanion] = useState<Companion>({ name: 'Friend', tone: 'warm and grounded' })
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -82,13 +85,14 @@ const App = () => {
       normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
     ),
   )
+  const activeNotes = account ? serverNotes : projectNotes
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
 
   const billing = useMemo(() => getSubscriptionState(), [])
   const entitlements = useMemo(() => getEntitlements(planId), [planId])
   const visibleProjectNotes = useMemo(
-    () => applyProjectNotesLimit(projectNotes, planId),
-    [planId, projectNotes],
+    () => applyProjectNotesLimit(activeNotes, planId),
+    [planId, activeNotes],
   )
   const today = getLocalDayKey(new Date())
   const todayUserMessages = visibleMessages.filter(
@@ -109,6 +113,8 @@ const App = () => {
       if (user) {
         setAccount(user)
         accountApi.messages().then(({ messages }) => setServerMessages(messages)).catch(() => setAccountError('Could not load account history'))
+        accountApi.notes().then(({ notes }) => setServerNotes(notes)).catch(() => setAccountError('Could not load saved notes'))
+        accountApi.companion().then(({ companion }) => setCompanion(companion)).catch(() => setAccountError('Could not load companion settings'))
       }
     }).catch(() => { /* API is optional during static preview */ })
   }, [])
@@ -158,11 +164,9 @@ const App = () => {
 
     if (account) {
       try {
-        const first = await accountApi.saveMessage('user', userText)
-        setServerMessages((current) => [...current, first.message])
+        const { messages: saved } = await accountApi.chat(userText)
+        setServerMessages((current) => [...current, ...saved])
         setInput('')
-        const second = await accountApi.saveMessage('assistant', response)
-        setServerMessages((current) => [...current, second.message])
       } catch (error) {
         setAccountError(error instanceof Error ? error.message : 'Message could not be saved')
       }
@@ -176,12 +180,16 @@ const App = () => {
     }
   }
 
-  const addProjectNote = () => {
+  const addProjectNote = async () => {
     if (!project.trim() || !note.trim()) return
     if (visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
-    setProjectNotes((current) => [
-      ...current,
-      { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() },
+    if (account) {
+      try {
+        const saved = await accountApi.addNote({ project: project.trim(), tags: tags.trim(), note: note.trim() })
+        setServerNotes((current) => [...current, saved.note])
+      } catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save note'); return }
+    } else setProjectNotes((current) => [
+      ...current, { id: crypto.randomUUID(), project: project.trim(), tags: tags.trim(), note: note.trim() },
     ])
     setProject('')
     setTags('')
@@ -195,7 +203,7 @@ const App = () => {
   }
 
   const exportLocalData = () => {
-    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages: visibleMessages, projectNotes }, null, 2)
+    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages: visibleMessages, projectNotes: activeNotes, companion: account ? companion : undefined }, null, 2)
     const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url
@@ -212,8 +220,12 @@ const App = () => {
     try {
       const { user } = await accountApi[action](accountEmail, accountPassword)
       const { messages: saved } = await accountApi.messages()
+      const { notes } = await accountApi.notes()
+      const { companion: savedCompanion } = await accountApi.companion()
       setAccount(user)
       setServerMessages(saved)
+      setServerNotes(notes)
+      setCompanion(savedCompanion)
       setAccountPassword('')
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'Account request failed. Start the API server to use accounts.')
@@ -227,20 +239,31 @@ const App = () => {
       <h2>Account</h2>
       {account ? (
         <>
-          <p>Signed in as {account.email}. Your chat history is stored in your account on this server. Local project notes remain in this browser.</p>
+          <p>Signed in as {account.email}. Chat history, companion setup, and saved project notes belong to this account on this server.</p>
+          <h3>Companion setup</h3>
+          <label>Companion name <input value={companion.name} maxLength={40} onChange={(e) => setCompanion({ ...companion, name: e.target.value })} /></label>
+          <label>Conversation style <select value={companion.tone} onChange={(e) => setCompanion({ ...companion, tone: e.target.value })}>
+            <option value="warm and grounded">Warm and grounded</option>
+            <option value="upbeat and creative">Upbeat and creative</option>
+            <option value="calm and concise">Calm and concise</option>
+          </select></label>
           <button type="button" onClick={async () => {
-            try { await accountApi.logout(); setAccount(null); setServerMessages([]) }
+            try { const saved = await accountApi.saveCompanion(companion); setCompanion(saved.companion); setAccountError('Companion settings saved') }
+            catch (error) { setAccountError(error instanceof Error ? error.message : 'Could not save companion settings') }
+          }}>Save companion setup</button>
+          <button type="button" onClick={async () => {
+            try { await accountApi.logout(); setAccount(null); setServerMessages([]); setServerNotes([]); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not sign out') }
           }}>Sign out</button>
           <button type="button" onClick={async () => {
             if (!window.confirm('Delete this account and all its saved messages?')) return
-            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]) }
+            try { await accountApi.deleteAccount(); setAccount(null); setServerMessages([]); setServerNotes([]); setCompanion({ name: 'Friend', tone: 'warm and grounded' }) }
             catch { setAccountError('Could not delete account') }
           }}>Delete account and saved messages</button>
         </>
       ) : (
         <>
-          <p>Create an account or sign in to keep chat history on the configured server. Local notes are still browser-only.</p>
+          <p>Create an account or sign in to save your chat history, companion settings, and project notes on the configured server.</p>
           <label>Email <input type="email" autoComplete="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} /></label>
           <label>Password <input type="password" autoComplete="current-password" value={accountPassword} onChange={(e) => setAccountPassword(e.target.value)} /></label>
           <div className="starters">
@@ -287,7 +310,7 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
-      <p className="small">{account ? `Signed in as ${account.email}; chat history is saved to this server.` : 'Guest chat is stored only in this browser. Sign in on the Account page for server-backed history.'}</p>
+      <p className="small">{account ? `Signed in as ${account.email}. Live AI chat requires server configuration; messages are saved only after a reply succeeds.` : 'Guest chat uses fixed sample responses stored in this browser. Sign in for server-backed AI chat when configured.'}</p>
       <p className="small">{disclosureText}</p>
       <p className="small">{crisisGuidance}</p>
       <label className="consent">
@@ -322,7 +345,7 @@ const App = () => {
           <ul>
             {visibleMessages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
-                <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <strong>{msg.role === 'assistant' ? (account ? companion.name : 'Friend') : 'You'}:</strong> {msg.text}
               </li>
             ))}
           </ul>
@@ -351,8 +374,9 @@ const App = () => {
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
         <p className="warn">You reached today’s message limit. Crisis guidance remains available. Paid plans are previews until billing is implemented.</p>
       )}
+      {accountError && <p className="warn" role="alert">{accountError}</p>}
 
-      <h3>Creative project memory (local fallback)</h3>
+      <h3>Creative project memory {account ? '(saved to your account)' : '(local browser)'}</h3>
       <p className="small">
         Keep only non-sensitive preferences, approved project notes, and creative context. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
       </p>
@@ -385,7 +409,12 @@ const App = () => {
         {visibleProjectNotes.map((item) => (
           <li key={item.id}>
             <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
-            <button type="button" aria-label={`Delete note for ${item.project}`} onClick={() => setProjectNotes((current) => current.filter((note) => note.id !== item.id))}>Delete note</button>
+            <button type="button" aria-label={`Delete note for ${item.project}`} onClick={async () => {
+              if (account) {
+                try { await accountApi.deleteNote(item.id); setServerNotes((current) => current.filter((note) => note.id !== item.id)) }
+                catch { setAccountError('Could not delete note') }
+              } else setProjectNotes((current) => current.filter((note) => note.id !== item.id))
+            }}>Delete note</button>
           </li>
         ))}
       </ul>
@@ -438,7 +467,7 @@ const App = () => {
       <h2>Privacy Centre</h2>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>Chat uses fixed responses, not a live AI service. Guest chat and project notes stay in this browser. When signed in, chat history is stored on the configured server.</li>
+        <li>Guest chat and notes stay in this browser and use fixed sample responses. Signed-in chat and notes use the configured server; when live AI is enabled, conversation context and approved notes are sent to the AI provider.</li>
         <li>Never enter provider secrets into browser environment variables.</li>
         <li>You can export or clear your local chat and creative notes at any time. Store exported files securely.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
@@ -459,7 +488,12 @@ const App = () => {
             catch { setAccountError('Could not delete saved messages') }
           } else setMessages([])
         }}>Delete {account ? 'saved' : 'local'} chat history</button>
-        <button type="button" onClick={() => setProjectNotes([])}>Delete local project notes</button>
+        <button type="button" onClick={async () => {
+          if (account) {
+            try { await accountApi.deleteNotes(); setServerNotes([]) }
+            catch { setAccountError('Could not delete saved notes') }
+          } else setProjectNotes([])
+        }}>Delete {account ? 'saved' : 'local'} project notes</button>
         <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
       </div>
     </section>
