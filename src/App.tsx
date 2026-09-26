@@ -386,6 +386,7 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>{companion.name || 'Friend'} — Companion Chat</h2>
+      <p className="small" aria-live="polite">Data mode: {syncLabel(syncStatus)}</p>
       <div className="starters"><button type="button" onClick={newConversation}>New conversation</button></div>
       {conversations.length > 0 && <div><h3>Conversation history</h3><ul>{conversations.map((item) => <li key={item.id}><button type="button" onClick={() => setActiveConversationId(item.id)}>{item.title}</button>{' '}<button type="button" onClick={() => deleteConversation(item.id)}>Delete</button></li>)}</ul></div>}
       <p className="small">{disclosureText}</p>
