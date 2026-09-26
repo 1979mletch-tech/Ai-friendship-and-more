@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { loadSession, saveSession, signIn, type AuthSession } from './authService'
+import { ensureFreshSession, loadSession, saveSession, signIn, type AuthSession } from './authService'
 
 const mockStorage = () => {
   const store = new Map<string, string>()
@@ -33,6 +33,40 @@ describe('auth service', () => {
       accessToken: 'expired', refreshToken: '', expiresAt: Date.now() - 1,
       user: { id: 'u1', email: 'user@example.test' },
     }))
+    expect(loadSession()).toBeNull()
+  })
+
+  it('retains an expired access token only when it can be refreshed', () => {
+    localStorage.setItem('ai_friendship_auth_session', JSON.stringify({
+      accessToken: 'expired', refreshToken: 'refreshable', expiresAt: Date.now() - 1,
+      user: { id: 'u1', email: 'user@example.test' },
+    }))
+    expect(loadSession()?.refreshToken).toBe('refreshable')
+  })
+
+  it('reuses a rotated token saved by another request for the same user', async () => {
+    const expired: AuthSession = {
+      accessToken: 'old', refreshToken: 'old-refresh', expiresAt: Date.now() - 1,
+      user: { id: 'u1', email: 'user@example.test' },
+    }
+    const current = { ...expired, accessToken: 'new', refreshToken: 'new-refresh', expiresAt: Date.now() + 3600_000 }
+    saveSession(current)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    expect(await ensureFreshSession(expired)).toEqual(current)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses refresh responses that switch the account identity', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'public-key')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      access_token: 'other-token', refresh_token: 'other-refresh', expires_in: 3600,
+      user: { id: 'u2', email: 'other@example.test' },
+    })))
+    await expect(ensureFreshSession({
+      accessToken: 'old', refreshToken: 'old-refresh', expiresAt: Date.now() - 1,
+      user: { id: 'u1', email: 'user@example.test' },
+    })).rejects.toThrow(/identity changed/i)
     expect(loadSession()).toBeNull()
   })
 
