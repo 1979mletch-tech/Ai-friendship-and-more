@@ -9,6 +9,7 @@ export const accountDataKeys = (session: AuthSession | null) => [
   localAccountKey('ai_friendship_messages', session),
   localAccountKey('ai_friendship_project_notes', session),
   localAccountKey('ai_friendship_memory', session),
+  localAccountKey('ai_friendship_cloud_conversation_id', session),
 ]
 
 export const accountDeletionKeys = (session: AuthSession) => [
