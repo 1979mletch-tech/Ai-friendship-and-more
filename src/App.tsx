@@ -10,6 +10,7 @@ import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, 
 import { sendCloudChat } from './services/chatService'
 import { backupConversation, backupMemoryItems } from './services/cloudSyncService'
 import { createExportBundle, downloadJson } from './utils/exportData'
+import { routeRequiresAdultGate } from './utils/adultRoutes'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -619,8 +620,24 @@ const App = () => {
     </section>
   )
 
+  const renderAdultGate = () => (
+    <section className="panel adult-gate-page" aria-labelledby="adult-gate-title">
+      <p className="eyebrow">ADULT ACCESS</p>
+      <h1 id="adult-gate-title">AI Aurora is an 18+ interactive experience.</h1>
+      <p>You must be 18 or over to use Aurora's chat, memory, history, account, settings or immersive companion features.</p>
+      <p className="small">Aurora is an adult AI persona with a 25+ presentation. Payment-card possession is not treated as proof of age.</p>
+      <div className="hero-actions">
+        <button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button>
+        <a className="secondary-cta" href="#/">Return home</a>
+      </div>
+      <p className="small">Preview control only. Production access will require the configured age-assurance mechanism to pass server-side verification.</p>
+    </section>
+  )
+
   let page = renderHome()
-  switch (route) {
+  if (routeRequiresAdultGate(route) && !adultAccess) {
+    page = renderAdultGate()
+  } else switch (route) {
     case '/chat':
       page = renderChat()
       break
