@@ -4,7 +4,9 @@ import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { disclosureText } from './utils/safety'
-import { createCompanionReply } from './services/companionService'
+import { getCompanionReply } from './services/replyOrchestrator'
+import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
+import { downloadDataExport } from './utils/downloadExport'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
@@ -69,6 +71,8 @@ const App = () => {
   const [authName, setAuthName] = useState('')
   const [authError, setAuthError] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
+  const [chatBusy, setChatBusy] = useState(false)
+  const [chatError, setChatError] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -158,12 +162,21 @@ const App = () => {
     if (activeConversationId === id) { setMessages([]); setActiveConversationId('default') }
   }
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
-    const response = createCompanionReply(userText, chatMode)
+    if (chatBusy) return
+    setChatBusy(true); setChatError('')
+    let response: string
+    try {
+      response = await getCompanionReply({ text: userText, mode: chatMode, session, conversationId: activeConversationId })
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'The companion reply could not be completed.')
+      setChatBusy(false)
+      return
+    }
     if (!conversations.some((item) => item.id === activeConversationId)) {
       setConversations((current) => [{ id: activeConversationId, title: userText.slice(0, 48) || 'Conversation', createdAt: new Date().toISOString() }, ...current])
     } else {
@@ -190,6 +203,7 @@ const App = () => {
       },
     ])
     setInput('')
+    setChatBusy(false)
   }
 
   const addProjectNote = () => {
@@ -218,11 +232,15 @@ const App = () => {
       setAuthError('Account server is not configured yet. Local preview remains available without pretending you are signed in.')
       return
     }
+    const email = normalizeEmail(authEmail)
+    if (!isPlausibleEmail(email)) { setAuthError('Enter a valid email address.'); return }
+    const issue = passwordIssue(authPassword)
+    if (issue) { setAuthError(issue); return }
     setAuthBusy(true); setAuthError('')
     try {
       const next = kind === 'login'
-        ? await authApi.signIn(authEmail.trim(), authPassword)
-        : await authApi.signUp(authEmail.trim(), authPassword, authName.trim())
+        ? await authApi.signIn(email, authPassword)
+        : await authApi.signUp(email, authPassword, authName.trim())
       setSession(next); setAuthPassword(''); window.location.hash = '/setup'
     } catch (error) { setAuthError(error instanceof Error ? error.message : 'Sign in failed.') }
     finally { setAuthBusy(false) }
@@ -378,7 +396,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={chatBusy || !hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
         >
           Send
         </button>
