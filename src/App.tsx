@@ -5,9 +5,11 @@ import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { disclosureText } from './utils/safety'
 import { createCompanionReply } from './services/companionService'
+import { authApi, type Session } from './services/apiClient'
+import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 type CompanionProfile = { name: string; tone: 'warm' | 'calm' | 'upbeat'; interests: string }
 
@@ -32,11 +34,12 @@ const STORAGE_KEYS = {
   messages: 'ai_friendship_messages',
   notes: 'ai_friendship_project_notes',
   companion: 'ai_friendship_companion_profile',
+  session: 'ai_friendship_session',
 }
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/setup' || hash === '/chat' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/account' || hash === '/setup' || hash === '/chat' || hash === '/memory' || hash === '/settings' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -56,6 +59,12 @@ const getLocalDayKey = (date: Date): string => {
 
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
+  const [session, setSession] = useState<Session | null>(() => safeLocalStorageGet(STORAGE_KEYS.session, null))
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authName, setAuthName] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -126,6 +135,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
+  useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
@@ -173,6 +183,49 @@ const App = () => {
     setMessages([])
     setProjectNotes([])
   }
+
+  const runAuth = async (kind: 'login' | 'register') => {
+    const env = readAppEnv()
+    if (env.authMode !== 'server' || !env.apiBaseUrl) {
+      setAuthError('Account server is not configured yet. Local preview remains available without pretending you are signed in.')
+      return
+    }
+    setAuthBusy(true); setAuthError('')
+    try {
+      const next = kind === 'login'
+        ? await authApi.signIn(authEmail.trim(), authPassword)
+        : await authApi.signUp(authEmail.trim(), authPassword, authName.trim())
+      setSession(next); setAuthPassword(''); window.location.hash = '/setup'
+    } catch (error) { setAuthError(error instanceof Error ? error.message : 'Sign in failed.') }
+    finally { setAuthBusy(false) }
+  }
+
+  const signOut = async () => {
+    if (session) { try { await authApi.signOut(session.accessToken) } catch { /* clear local session regardless */ } }
+    setSession(null)
+  }
+
+  const renderAccount = () => (
+    <section className="panel">
+      <h2>Account</h2>
+      {session ? (<>
+        <p>Signed in as <strong>{session.user.displayName || session.user.email}</strong></p>
+        <button type="button" onClick={signOut}>Sign out</button>
+      </>) : (<>
+        <p className="small">Create an account or sign in when the secure server is configured. Passwords are never placed in URLs.</p>
+        <div className="grid">
+          <label>Display name<input value={authName} onChange={(e) => setAuthName(e.target.value)} autoComplete="name" /></label>
+          <label>Email<input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} autoComplete="email" /></label>
+          <label>Password<input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} autoComplete="current-password" /></label>
+        </div>
+        <div className="starters">
+          <button type="button" disabled={authBusy || !authEmail || !authPassword} onClick={() => runAuth('login')}>Sign in</button>
+          <button type="button" disabled={authBusy || !authEmail || !authPassword} onClick={() => runAuth('register')}>Create account</button>
+        </div>
+        {authError && <p className="warn" role="alert">{authError}</p>}
+      </>)}
+    </section>
+  )
 
   const renderSetup = () => (
     <section className="panel">
@@ -465,6 +518,9 @@ const App = () => {
 
   let page = renderHome()
   switch (route) {
+    case '/account':
+      page = renderAccount()
+      break
     case '/setup':
       page = renderSetup()
       break
@@ -497,6 +553,7 @@ const App = () => {
         <h1>AI Friendship V1+</h1>
         <nav>
           <a href="#/">Home</a>
+          <a href="#/account">Account</a>
           <a href="#/setup">Companion setup</a>
           <a href="#/chat">Chat</a>
           <a href="#/memory">Memory</a>
