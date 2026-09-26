@@ -16,3 +16,15 @@ describe('API client', () => {
     vi.unstubAllEnvs()
   })
 })
+
+
+describe('empty success responses', () => {
+  it('handles 204 logout without parsing JSON', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.test')
+    const json = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 204, json }))
+    await expect(authApi.signOut('token')).resolves.toBeUndefined()
+    expect(json).not.toHaveBeenCalled()
+    vi.unstubAllGlobals(); vi.unstubAllEnvs()
+  })
+})
