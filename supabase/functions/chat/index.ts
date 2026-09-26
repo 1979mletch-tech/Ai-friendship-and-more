@@ -30,9 +30,8 @@ Deno.serve(async (req) => {
 
   // Production age assurance must be written to trusted app_metadata by a
   // server-side verification flow. Client-editable user metadata is never trusted.
-  const previewWithoutVerification = Deno.env.get('PREVIEW_ALLOW_UNVERIFIED_ADULTS') === 'true'
   const adultVerified = user.app_metadata?.adult_verified === true
-  if (!previewWithoutVerification && !adultVerified) {
+  if (!adultVerified) {
     return json({ error: 'Adult eligibility verification required' }, 403)
   }
 
