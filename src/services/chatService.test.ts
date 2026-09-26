@@ -33,7 +33,7 @@ describe('chat service', () => {
     )
     expect(result.reply).toBe('hello')
     const [, init] = fetchMock.mock.calls[0]
-    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
+    expect((init && init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     const body = JSON.parse(String(init?.body))
     expect(body.messages[0].text).toHaveLength(2000)
   })
