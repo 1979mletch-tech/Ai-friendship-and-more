@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accountDataKeys, localAccountKey } from './localAccountScope'
+import { accountDataKeys, accountDeletionKeys, localAccountKey } from './localAccountScope'
 import type { AuthSession } from '../services/authService'
 
 const identity = (id: string): AuthSession => ({
@@ -18,5 +18,12 @@ describe('local account data scope', () => {
   it('limits deletion to the active identity', () => {
     expect(accountDataKeys(identity('alice'))).not.toContain('ai_friendship_messages')
     expect(accountDataKeys(identity('alice'))).not.toEqual(accountDataKeys(identity('bob')))
+  })
+
+  it('removes account preferences on deletion without erasing guest data', () => {
+    const keys = accountDeletionKeys(identity('alice'))
+    expect(keys).toContain('ai_friendship_consent:account:alice')
+    expect(keys).toContain('ai_friendship_companion_name:account:alice')
+    expect(keys).not.toContain('ai_friendship_consent')
   })
 })
