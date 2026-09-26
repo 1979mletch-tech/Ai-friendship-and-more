@@ -1,21 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
+import { normalizeConversations, titleFromMessage, type ChatMessage, type Conversation } from './utils/conversations'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/setup' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
-
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  createdAt?: string
-  dayKey?: string
-}
 
 type ProjectNote = {
   id: string
@@ -28,12 +21,14 @@ const STORAGE_KEYS = {
   consent: 'ai_friendship_consent',
   plan: 'ai_friendship_plan',
   messages: 'ai_friendship_messages',
+  conversations: 'ai_friendship_conversations',
+  profile: 'ai_friendship_profile',
   notes: 'ai_friendship_project_notes',
 }
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/history' || hash === '/setup' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
@@ -61,9 +56,22 @@ const App = () => {
   const planId: PlanId = 'free'
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.messages, []),
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    const saved = safeLocalStorageGet<unknown>(STORAGE_KEYS.conversations, null)
+    if (saved !== null) return normalizeConversations(saved)
+    const legacy = safeLocalStorageGet<ChatMessage[]>(STORAGE_KEYS.messages, [])
+    return Array.isArray(legacy) && legacy.length
+      ? [{ id: 'legacy-conversation', title: 'Previous chat', updatedAt: new Date().toISOString(), messages: legacy }]
+      : []
+  })
+  const [activeId, setActiveId] = useState<string | null>(() =>
+    normalizeConversations(safeLocalStorageGet(STORAGE_KEYS.conversations, []))[0]?.id ??
+    (safeLocalStorageGet<unknown>(STORAGE_KEYS.conversations, null) === null &&
+    Array.isArray(safeLocalStorageGet(STORAGE_KEYS.messages, [])) &&
+    safeLocalStorageGet<ChatMessage[]>(STORAGE_KEYS.messages, []).length ? 'legacy-conversation' : null),
   )
+  const [companionName, setCompanionName] = useState(() => safeLocalStorageGet(STORAGE_KEYS.profile, 'Friend'))
+  const messages = conversations.find((conversation) => conversation.id === activeId)?.messages ?? []
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -82,7 +90,7 @@ const App = () => {
     [planId, projectNotes],
   )
   const today = getLocalDayKey(new Date())
-  const todayUserMessages = messages.filter(
+  const todayUserMessages = conversations.flatMap((conversation) => conversation.messages).filter(
     (message) =>
       message.role === 'user' &&
       (message.dayKey ||
@@ -121,7 +129,8 @@ const App = () => {
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, previewPlanId), [previewPlanId])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.conversations, conversations), [conversations])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.profile, companionName), [companionName])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
   const sendMessage = () => {
@@ -138,8 +147,7 @@ const App = () => {
 
     const localDayKey = getLocalDayKey(new Date())
 
-    setMessages((current) => [
-      ...current,
+    const newMessages: ChatMessage[] = [
       {
         id: crypto.randomUUID(),
         role: 'user',
@@ -154,7 +162,19 @@ const App = () => {
         createdAt: new Date().toISOString(),
         dayKey: localDayKey,
       },
-    ])
+    ]
+    const id = activeId ?? crypto.randomUUID()
+    setConversations((current) => {
+      const existing = current.find((conversation) => conversation.id === id)
+      const updated: Conversation = {
+        id,
+        title: existing?.title ?? titleFromMessage(userText),
+        updatedAt: new Date().toISOString(),
+        messages: [...(existing?.messages ?? []), ...newMessages],
+      }
+      return [updated, ...current.filter((conversation) => conversation.id !== id)]
+    })
+    setActiveId(id)
     setInput('')
   }
 
@@ -171,8 +191,9 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes)
-    setMessages([])
+    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.conversations, STORAGE_KEYS.notes)
+    setConversations([])
+    setActiveId(null)
     setProjectNotes([])
   }
 
@@ -210,6 +231,9 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
+      <p className="small">Talking with {companionName || 'Friend'} · {conversations.find((item) => item.id === activeId)?.title ?? 'New conversation'}</p>
+      <button type="button" onClick={() => setActiveId(null)}>New conversation</button>{' '}
+      <a href="#/history">View history</a>
       <p className="small">{disclosureText}</p>
       <p className="small">{crisisGuidance}</p>
       <label className="consent">
@@ -244,7 +268,7 @@ const App = () => {
           <ul>
             {messages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
-                <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <strong>{msg.role === 'assistant' ? (companionName || 'Friend') : 'You'}:</strong> {msg.text}
               </li>
             ))}
           </ul>
@@ -316,6 +340,47 @@ const App = () => {
     </section>
   )
 
+  const renderHistory = () => (
+    <section className="panel">
+      <h2>Conversation history</h2>
+      <p className="small">Saved in this browser only. Rename, continue, or delete each conversation.</p>
+      <button type="button" onClick={() => { setActiveId(null); window.location.hash = '/chat' }}>New conversation</button>
+      {conversations.length === 0 ? <p>No conversations saved yet.</p> : (
+        <ul className="history-list">
+          {conversations.map((item) => (
+            <li key={item.id}>
+              <strong>{item.title}</strong> <span className="small">({item.messages.length} messages)</span>
+              <div className="history-actions">
+                <button type="button" onClick={() => { setActiveId(item.id); window.location.hash = '/chat' }}>Continue</button>
+                <button type="button" onClick={() => {
+                  const title = window.prompt('Conversation name', item.title)?.trim()
+                  if (title) setConversations((current) => current.map((conversation) =>
+                    conversation.id === item.id ? { ...conversation, title: title.slice(0, 80) } : conversation))
+                }}>Rename</button>
+                <button type="button" onClick={() => {
+                  if (!window.confirm(`Delete “${item.title}”? This cannot be undone.`)) return
+                  setConversations((current) => current.filter((conversation) => conversation.id !== item.id))
+                  if (activeId === item.id) setActiveId(null)
+                }}>Delete</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+
+  const renderSetup = () => (
+    <section className="panel">
+      <h2>Companion settings</h2>
+      <p>Choose the name you see in chat. This setting is stored in this browser.</p>
+      <label>Companion name
+        <input maxLength={40} value={companionName} onChange={(event) => setCompanionName(event.target.value)} />
+      </label>
+      <p className="small">Your companion is AI software. The current chat uses fixed local replies while a live service is being built.</p>
+    </section>
+  )
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -375,6 +440,14 @@ const App = () => {
       <button type="button" onClick={clearLocalData}>
         Delete my local memory + history
       </button>
+      <button type="button" onClick={() => {
+        if (!window.confirm('Delete all AI Friendship data stored in this browser?')) return
+        clearLocalData()
+        safeLocalStorageDelete(STORAGE_KEYS.consent, STORAGE_KEYS.plan, STORAGE_KEYS.profile)
+        setHasConsent(false)
+        setPreviewPlanId('free')
+        setCompanionName('Friend')
+      }}>Delete all local app data</button>
     </section>
   )
 
@@ -418,6 +491,12 @@ const App = () => {
     case '/chat':
       page = renderChat()
       break
+    case '/history':
+      page = renderHistory()
+      break
+    case '/setup':
+      page = renderSetup()
+      break
     case '/pricing':
       page = renderPricing()
       break
@@ -439,6 +518,8 @@ const App = () => {
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
+          <a href="#/history">History</a>
+          <a href="#/setup">Settings</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>

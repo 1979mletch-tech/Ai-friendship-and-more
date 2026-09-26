@@ -147,3 +147,7 @@ footer {
   font-size: 0.9rem;
   color: #c8bff0;
 }
+
+.history-list { padding-left: 1.25rem; }
+.history-list li { padding: 0.75rem 0; border-bottom: 1px solid #514970; }
+.history-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }

@@ -8,6 +8,7 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 
 - Creative-first positioning and topic starters (without excluding general chat use)
 - Chat mode switch: **General support** and **Creative mode**
+- Browser-only companion name and separate conversations with new, continue, rename, and delete controls
 - Creative companion foundations:
   - project memory notes
   - project tags
@@ -27,6 +28,7 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - minimal-data principles
   - provider processing disclosure
 - Consent/disclosure control before active chat
+- Local privacy controls to clear chat and notes or reset all app data
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
