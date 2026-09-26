@@ -61,3 +61,16 @@ export const signOut = async (session: AuthSession | null) => {
   }
   saveSession(null)
 }
+
+
+export const deleteAccount = async (session: AuthSession) => {
+  const config = readCloudConfig()
+  if (!hasCloudAuth(config)) throw new Error('Cloud authentication is not configured.')
+  const response = await fetch(config.supabaseUrl + '/functions/v1/delete-account', {
+    method: 'DELETE',
+    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + session.accessToken },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload?.error || 'Account deletion failed.')
+  saveSession(null)
+}
