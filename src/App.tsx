@@ -12,6 +12,7 @@ import { billingApi } from './services/billingApi'
 import { trustedRedirect } from './utils/redirectPolicy'
 import { companionProfileApi } from './services/companionProfileApi'
 import { sanitizeCompanionProfile } from './utils/companionProfile'
+import { sanitizeMemory, removeMemory, type MemoryItem } from './utils/memoryStore'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -46,6 +47,7 @@ const STORAGE_KEYS = {
   session: 'ai_friendship_session',
   conversations: 'ai_friendship_conversations',
   activeConversation: 'ai_friendship_active_conversation',
+  memories: 'ai_friendship_memories',
 }
 
 const parseRoute = (): Route => {
@@ -90,6 +92,9 @@ const App = () => {
   const [conversations, setConversations] = useState<LocalConversation[]>(() => migrateConversations(safeLocalStorageGet(STORAGE_KEYS.conversations, []), safeLocalStorageGet(STORAGE_KEYS.messages, [])))
   const [activeConversationId, setActiveConversationId] = useState<string>(() => safeLocalStorageGet(STORAGE_KEYS.activeConversation, 'default'))
   const messages: ChatMessage[] = conversations.find((item) => item.id === activeConversationId)?.messages || []
+  const [memoryLabel, setMemoryLabel] = useState('')
+  const [memoryValue, setMemoryValue] = useState('')
+  const [memories, setMemories] = useState<MemoryItem[]>(() => safeLocalStorageGet(STORAGE_KEYS.memories, []))
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -150,6 +155,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.conversations, conversations), [conversations])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.activeConversation, activeConversationId), [activeConversationId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.memories, memories), [memories])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companion, companion), [companion])
   useEffect(() => { if (session) safeLocalStorageSet(STORAGE_KEYS.session, session); else safeLocalStorageDelete(STORAGE_KEYS.session) }, [session])
 
@@ -204,8 +210,9 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
+    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memories, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
     setProjectNotes([])
+    setMemories([])
     setConversations([])
     setActiveConversationId('default')
   }
@@ -236,8 +243,8 @@ const App = () => {
     setAuthBusy(true); setAuthError('')
     try {
       await authApi.deleteAccount(session.accessToken)
-      safeLocalStorageDelete(STORAGE_KEYS.session, STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation, STORAGE_KEYS.companion)
-      setSession(null); setProjectNotes([]); setConversations([]); setActiveConversationId('default')
+      safeLocalStorageDelete(STORAGE_KEYS.session, STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memories, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation, STORAGE_KEYS.companion)
+      setSession(null); setProjectNotes([]); setMemories([]); setConversations([]); setActiveConversationId('default')
       window.location.hash = '/'
     } catch (error) { setAuthError(error instanceof Error ? error.message : 'Account deletion failed.') }
     finally { setAuthBusy(false) }
@@ -449,19 +456,21 @@ const App = () => {
   )
 
   const deleteNote = (id: string) => setProjectNotes((current) => current.filter((item) => item.id !== id))
+  const addMemory = () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; setMemories((current) => [sanitizeMemory(memoryLabel, memoryValue), ...current]); setMemoryLabel(''); setMemoryValue('') }
 
   const renderMemory = () => (
     <section className="panel">
       <h2>Your memory</h2>
-      <p>You control what AI Friendship keeps on this device. Save only things you want remembered.</p>
-      {visibleProjectNotes.length === 0 ? <p className="small">No saved memories yet.</p> : (
-        <ul>{visibleProjectNotes.map((item) => (
-          <li key={item.id}><strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
-            <button type="button" onClick={() => deleteNote(item.id)}>Forget this</button>
-          </li>
-        ))}</ul>
-      )}
-      <button type="button" onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.notes); setProjectNotes([]) }}>Forget all saved memories</button>
+      <p>You decide exactly what AI Friendship may remember. Memory is separate from conversation history and can be removed at any time.</p>
+      <div className="grid">
+        <label>Memory label<input value={memoryLabel} maxLength={60} onChange={(e) => setMemoryLabel(e.target.value)} placeholder="e.g. Favourite music" /></label>
+        <label>What to remember<textarea value={memoryValue} maxLength={500} onChange={(e) => setMemoryValue(e.target.value)} placeholder="Only save something you want remembered." /></label>
+      </div>
+      <button type="button" onClick={addMemory} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
+      {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" onClick={() => setMemories((current) => removeMemory(current, item.id))}>Forget this</button></li>)}</ul>}
+      <button type="button" disabled={memories.length === 0} onClick={() => { safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }}>Forget all approved memories</button>
+      <h3>Creative project notes</h3>
+      {visibleProjectNotes.length === 0 ? <p className="small">No project notes saved.</p> : <ul>{visibleProjectNotes.map((item) => <li key={item.id}><strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}<button type="button" onClick={() => deleteNote(item.id)}>Delete note</button></li>)}</ul>}
     </section>
   )
 
@@ -547,7 +556,7 @@ const App = () => {
         provider data-processing/legal review.
       </p>
       <div className="starters">
-        <button type="button" onClick={() => downloadDataExport(companion, conversations, projectNotes)}>
+        <button type="button" onClick={() => downloadDataExport(companion, conversations, { approvedMemories: memories, projectNotes })}>
           Export my local data
         </button>
         <button type="button" onClick={clearLocalData}>
