@@ -5,7 +5,7 @@ import type { AuthSession } from './authService'
 const session: AuthSession = {
   accessToken: 'test-token',
   refreshToken: 'refresh',
-  expiresAt: Date.now() + 60_000,
+  expiresAt: Date.now() + 120_000,
   user: { id: 'user-a', email: 'a@example.test' },
 }
 
@@ -46,4 +46,18 @@ describe('chat service', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
     await expect(sendCloudChat(session, [], 'general', 'Friend')).rejects.toThrow(/invalid response/i)
   })
+  it('refreshes an expiring session before sending private messages', async () => {
+    vi.stubEnv('VITE_CHAT_API_URL', 'https://example.test/chat')
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'public-anon-key')
+    Object.defineProperty(globalThis, 'localStorage', { value: { setItem: vi.fn() }, configurable: true })
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'new-token', refresh_token: 'new-refresh', expires_in: 3600, user: { id: 'user-a', email: 'a@example.test' } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ reply: 'hello' })))
+    await sendCloudChat({ ...session, expiresAt: Date.now() - 1 }, [{ role: 'user', text: 'hello' }], 'general', 'Friend')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect((fetchMock.mock.calls[1][1]?.headers as Record<string, string>).Authorization).toBe('Bearer new-token')
+    expect((fetchMock.mock.calls[1][1]?.headers as Record<string, string>).apikey).toBe('public-anon-key')
+  })
+
 })
