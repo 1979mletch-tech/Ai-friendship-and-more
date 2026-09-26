@@ -125,8 +125,8 @@ const App = () => {
   const effectivePlanId = trustedPlan(serverBillingMode, billingStatus, planId)
   const entitlements = useMemo(() => getEntitlements(effectivePlanId), [effectivePlanId])
   const visibleProjectNotes = useMemo(
-    () => applyProjectNotesLimit(projectNotes, planId),
-    [planId, projectNotes],
+    () => applyProjectNotesLimit(projectNotes, effectivePlanId),
+    [effectivePlanId, projectNotes],
   )
   const today = getLocalDayKey(new Date())
   const todayUserMessages = conversations.flatMap((conversation) => conversation.messages).filter(
@@ -547,7 +547,7 @@ const App = () => {
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         Allow companion chat on this device
       </label>
-      <p>Current plan: <strong>{planId}</strong></p>
+      <p>Current plan: <strong>{effectivePlanId}</strong></p>
       <button type="button" onClick={clearLocalData}>Delete local chat history + memory</button>
       <p className="warn">Deleting local data cannot be undone.</p>
     </section>
@@ -592,14 +592,14 @@ const App = () => {
             <button
               type="button"
               aria-label={`Choose ${plan.name}`}
-              aria-current={planId === plan.id}
+              aria-current={effectivePlanId === plan.id}
               disabled={billingBusy}
               onClick={() => {
                 if (plan.id === 'free') { setPlanId('free'); setProjectNotes((current) => applyProjectNotesLimit(current, 'free')); return }
                 void startCheckout(plan.id)
               }}
             >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
+              {effectivePlanId === plan.id ? 'Current plan' : 'Choose plan'}
             </button>
           </article>
         ))}
