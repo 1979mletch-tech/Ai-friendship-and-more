@@ -27,10 +27,15 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - minimal-data principles
   - provider processing disclosure
 - Consent/disclosure control before active chat
+- Safety-first companion reply routing for crisis, dependency and sexual-boundary scenarios
+- User-controlled Memory and Settings routes with per-memory and clear-all deletion controls
+- Conversation-history helper foundation with regression tests
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
 
+- Production authentication and server-backed per-user data isolation (current V1 data remains local-browser scoped)
+- Real AI-provider/server endpoint integration (current companion response service is deterministic/local)
 - Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
 - Webhook handling (checkout success, subscription updates, cancellations, invoice events)
 - Server-verified entitlements and anti-abuse limits
