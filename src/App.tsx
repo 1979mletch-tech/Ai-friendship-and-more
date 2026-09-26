@@ -8,6 +8,8 @@ import { getCompanionReply } from './services/replyOrchestrator'
 import { normalizeEmail, isPlausibleEmail, passwordIssue } from './utils/accountValidation'
 import { downloadDataExport } from './utils/downloadExport'
 import { MAX_MESSAGE_LENGTH, validateMessage } from './utils/messageValidation'
+import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
+import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
@@ -15,8 +17,6 @@ import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 type CompanionProfile = { name: string; tone: 'warm' | 'calm' | 'upbeat'; interests: string }
-
-type Conversation = { id: string; title: string; createdAt: string }
 
 type ChatMessage = {
   id: string
@@ -81,11 +81,9 @@ const App = () => {
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [companion, setCompanion] = useState<CompanionProfile>(() => safeLocalStorageGet(STORAGE_KEYS.companion, { name: 'Friend', tone: 'warm', interests: '' }))
   const [input, setInput] = useState('')
-  const [conversations, setConversations] = useState<Conversation[]>(() => safeLocalStorageGet(STORAGE_KEYS.conversations, []))
+  const [conversations, setConversations] = useState<LocalConversation[]>(() => migrateConversations(safeLocalStorageGet(STORAGE_KEYS.conversations, []), safeLocalStorageGet(STORAGE_KEYS.messages, [])))
   const [activeConversationId, setActiveConversationId] = useState<string>(() => safeLocalStorageGet(STORAGE_KEYS.activeConversation, 'default'))
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.messages, []),
-  )
+  const messages: ChatMessage[] = conversations.find((item) => item.id === activeConversationId)?.messages || []
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -143,7 +141,6 @@ const App = () => {
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.conversations, conversations), [conversations])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.activeConversation, activeConversationId), [activeConversationId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
@@ -152,15 +149,14 @@ const App = () => {
 
   const newConversation = () => {
     const id = crypto.randomUUID()
-    setConversations((current) => [{ id, title: 'New conversation', createdAt: new Date().toISOString() }, ...current])
+    setConversations((current) => [newLocalConversation(id), ...current])
     setActiveConversationId(id)
-    setMessages([])
     window.location.hash = '/chat'
   }
 
   const deleteConversation = (id: string) => {
     setConversations((current) => current.filter((item) => item.id !== id))
-    if (activeConversationId === id) { setMessages([]); setActiveConversationId('default') }
+    if (activeConversationId === id) { setActiveConversationId('default') }
   }
 
   const sendMessage = async () => {
@@ -180,31 +176,11 @@ const App = () => {
       setChatBusy(false)
       return
     }
-    if (!conversations.some((item) => item.id === activeConversationId)) {
-      setConversations((current) => [{ id: activeConversationId, title: userText.slice(0, 48) || 'Conversation', createdAt: new Date().toISOString() }, ...current])
-    } else {
-      setConversations((current) => current.map((item) => item.id === activeConversationId && item.title === 'New conversation' ? { ...item, title: userText.slice(0, 48) } : item))
-    }
-
-    const localDayKey = getLocalDayKey(new Date())
-
-    setMessages((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: response,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
-    ])
+    setConversations((current) => {
+      const existing = current.find((item) => item.id === activeConversationId) || newLocalConversation(activeConversationId)
+      const updated = appendExchange(existing, userText, response)
+      return [updated, ...current.filter((item) => item.id !== activeConversationId)]
+    })
     setInput('')
     setChatBusy(false)
   }
@@ -223,7 +199,6 @@ const App = () => {
 
   const clearLocalData = () => {
     safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
-    setMessages([])
     setProjectNotes([])
     setConversations([])
     setActiveConversationId('default')
@@ -256,7 +231,7 @@ const App = () => {
     try {
       await authApi.deleteAccount(session.accessToken)
       safeLocalStorageDelete(STORAGE_KEYS.session, STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation, STORAGE_KEYS.companion)
-      setSession(null); setMessages([]); setProjectNotes([]); setConversations([]); setActiveConversationId('default')
+      setSession(null); setProjectNotes([]); setConversations([]); setActiveConversationId('default')
       window.location.hash = '/'
     } catch (error) { setAuthError(error instanceof Error ? error.message : 'Account deletion failed.') }
     finally { setAuthBusy(false) }
