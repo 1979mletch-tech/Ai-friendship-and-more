@@ -14,6 +14,7 @@ import { companionProfileApi } from './services/companionProfileApi'
 import { sanitizeCompanionProfile } from './utils/companionProfile'
 import { sanitizeMemory, removeMemory, type MemoryItem } from './utils/memoryStore'
 import { memoryApi } from './services/memoryApi'
+import { privacyApi } from './services/privacyApi'
 import { appendExchange, newLocalConversation, type LocalConversation } from './utils/chatPersistence'
 import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
@@ -541,6 +542,8 @@ const App = () => {
     </section>
   )
 
+  const exportMyData = async () => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { const remote = await privacyApi.exportData(session); downloadDataExport(companion, remote, { approvedMemories: memories, projectNotes }); return } catch { /* retain local export availability */ } } downloadDataExport(companion, conversations, { approvedMemories: memories, projectNotes }) }
+
   const renderPrivacy = () => (
     <section className="panel">
       <h2>Privacy Centre</h2>
@@ -559,7 +562,7 @@ const App = () => {
         provider data-processing/legal review.
       </p>
       <div className="starters">
-        <button type="button" onClick={() => downloadDataExport(companion, conversations, { approvedMemories: memories, projectNotes })}>
+        <button type="button" onClick={() => { void exportMyData() }}>
           Export my local data
         </button>
         <button type="button" onClick={clearLocalData}>
