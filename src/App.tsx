@@ -12,6 +12,7 @@ import { backupConversation, backupMemoryItems } from './services/cloudSyncServi
 import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
 import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
+import { previewActivePlan } from './utils/planGuard'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -49,11 +50,6 @@ const parseRoute = (): Route => {
   return '/'
 }
 
-const validPlanIds: PlanId[] = ['free', 'pro-monthly', 'pro-annual']
-
-const normalizePlanId = (value: unknown): PlanId =>
-  typeof value === 'string' && validPlanIds.includes(value as PlanId) ? (value as PlanId) : 'free'
-
 const getLocalDayKey = (date: Date): string => {
   const year = date.getFullYear()
   const month = `${date.getMonth() + 1}`.padStart(2, '0')
@@ -73,7 +69,8 @@ const App = () => {
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
-  const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  // No server-verified billing exists yet. Browser state cannot grant paid limits.
+  const planId: PlanId = previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -88,7 +85,7 @@ const App = () => {
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
       safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, session), []),
-      normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
+      'free',
     ),
   )
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
@@ -139,7 +136,7 @@ const App = () => {
 
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.memory, session), memoryItems), [memoryItems, session])
@@ -556,14 +553,11 @@ const App = () => {
             </ul>
             <button
               type="button"
-              aria-label={`Choose ${plan.name}`}
+              aria-label={plan.id === 'free' ? 'Current free plan' : `${plan.name} unavailable until billing is ready`}
               aria-current={planId === plan.id}
-              onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
-              }}
+              disabled={plan.id !== 'free'}
             >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
+              {planId === plan.id ? 'Current plan' : 'Coming later'}
             </button>
           </article>
         ))}
