@@ -16,11 +16,16 @@ export default function CloudChat() {
   const [input, setInput] = useState('')
   const [name, setName] = useState('Friend')
   const [notes, setNotes] = useState<Note[]>([])
+  const [subscription, setSubscription] = useState<{ status: string; current_period_end: string | null } | null>(null)
   const [noteProject, setNoteProject] = useState('')
   const [noteText, setNoteText] = useState('')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [recovering, setRecovering] = useState(false)
+  const [currentTime] = useState(() => Date.now())
+  const paid = Boolean(subscription && ['active', 'trialing'].includes(subscription.status) &&
+    subscription.current_period_end && new Date(subscription.current_period_end).getTime() > currentTime)
+  const noteLimit = paid ? 100 : 3
 
   useEffect(() => {
     if (!cloud) return
@@ -30,7 +35,7 @@ export default function CloudChat() {
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setRecovering(true)
       setUser(session?.user ?? null)
-      if (!session) { setThreads([]); setThreadId(null); setMessages([]); setNotes([]); setName('Friend') }
+      if (!session) { setThreads([]); setThreadId(null); setMessages([]); setNotes([]); setName('Friend'); setSubscription(null) }
     })
     return () => { active = false; subscription.unsubscribe() }
   }, [])
@@ -47,6 +52,9 @@ export default function CloudChat() {
     })
     client.from('project_notes').select('id,project,tags,note').order('updated_at', { ascending: false }).then(({ data }) => {
       if (active) setNotes(data ?? [])
+    })
+    client.from('subscriptions').select('status,current_period_end').eq('user_id', user.id).maybeSingle().then(({ data }) => {
+      if (active) setSubscription(data)
     })
     return () => { active = false }
   }, [user])
@@ -88,6 +96,15 @@ export default function CloudChat() {
     const { data, error } = await cloud.functions.invoke('chat', { body: { conversationId: threadId, text } })
     if (error || data?.error) { setStatus(data?.error ?? 'Message could not be sent.'); setBusy(false); return }
     setInput('')
+    if (data.notSaved) {
+      const now = new Date().toISOString()
+      setMessages((current) => [...current,
+        { id: crypto.randomUUID(), role: 'user', body: text, created_at: now },
+        { id: crypto.randomUUID(), role: 'assistant', body: data.reply, created_at: now }])
+      setStatus('Safety guidance is shown here but is not saved to your cloud history.')
+      setBusy(false)
+      return
+    }
     const { data: latest } = await cloud.from('chat_messages').select('id,role,body,created_at').eq('conversation_id', threadId).order('created_at')
     setMessages((latest ?? []) as Message[])
     const current = threads.find((thread) => thread.id === threadId)
@@ -107,7 +124,7 @@ export default function CloudChat() {
 
   async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!cloud || !user || !noteProject.trim() || !noteText.trim() || notes.length >= 3) return
+    if (!cloud || !user || !noteProject.trim() || !noteText.trim() || notes.length >= noteLimit) return
     const { data, error } = await cloud.from('project_notes').insert({ user_id: user.id, project: noteProject.trim().slice(0, 100), note: noteText.trim().slice(0, 2000) }).select('id,project,tags,note').single()
     if (error || !data) { setStatus('Could not save project note.'); return }
     setNotes((items) => [data, ...items]); setNoteProject(''); setNoteText('')
@@ -164,6 +181,19 @@ export default function CloudChat() {
     setStatus(error?.message ?? 'If the account exists, a password reset email has been sent.')
   }
 
+  async function openBilling(action: 'checkout' | 'portal', plan?: 'monthly' | 'annual') {
+    if (!cloud || busy) return
+    setBusy(true); setStatus('')
+    const { data, error } = await cloud.functions.invoke('billing', { body: { action, plan } })
+    setBusy(false)
+    if (error || !data?.url) { setStatus(data?.error ?? 'Billing is not available yet.'); return }
+    try {
+      const destination = new URL(data.url)
+      if (destination.protocol !== 'https:' || !destination.hostname.endsWith('.stripe.com')) throw new Error('Invalid billing URL')
+      window.location.assign(destination.toString())
+    } catch { setStatus('Invalid billing destination.') }
+  }
+
   async function updatePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!cloud || password.length < 8) return
@@ -192,6 +222,12 @@ export default function CloudChat() {
     <button type="button" onClick={newThread}>New cloud conversation</button>
     <p><button type="button" disabled={busy} onClick={() => void exportCloudData()}>Download cloud data</button>{' '}
     <button type="button" disabled={busy} onClick={() => void deleteAccount()}>Delete cloud account</button></p>
+    <div className="cloud-settings"><h3>Billing</h3><p>Current subscription: {subscription?.status ?? 'Free'}. Paid access is activated only after Stripe confirms the subscription to the server.</p>
+      {import.meta.env.VITE_BILLING_PROVIDER === 'stripe' ? <div className="history-actions">
+        <button type="button" disabled={busy} onClick={() => void openBilling('checkout', 'monthly')}>Monthly checkout</button>
+        <button type="button" disabled={busy} onClick={() => void openBilling('checkout', 'annual')}>Annual checkout</button>
+        <button type="button" disabled={busy} onClick={() => void openBilling('portal')}>Manage subscription</button>
+      </div> : <p className="small">Checkout is not enabled for this deployment.</p>}</div>
     <div className="cloud-settings"><h3>Companion setup</h3><label>Companion name <input maxLength={40} value={name} onChange={(event) => setName(event.target.value)} /></label>{' '}<button type="button" onClick={() => void saveName()}>Save name</button></div>
     <div className="cloud-layout"><aside aria-label="Cloud conversations"><h3>Conversations</h3><ul>{threads.map((thread) =>
       <li key={thread.id}><button type="button" onClick={() => setThreadId(thread.id)} aria-current={threadId === thread.id}>{thread.title}</button>{' '}
@@ -199,9 +235,9 @@ export default function CloudChat() {
       <div><div className="chat-box" role="log" aria-live="polite"><ul>{messages.map((message) => <li key={message.id}><strong>{message.role === 'user' ? 'You' : 'AI'}:</strong> {message.body}<time className="message-time" dateTime={message.created_at}>{new Date(message.created_at).toLocaleString()}</time></li>)}</ul></div>
         <form onSubmit={send} className="input-row"><input aria-label="Cloud message" maxLength={2000} value={input} onChange={(event) => setInput(event.target.value)} disabled={!threadId || busy} /><button disabled={!threadId || busy || !input.trim()}>Send</button></form></div></div>
     <p role="status" className="warn">{status}</p>
-    <div className="cloud-settings"><h3>Cloud project notes</h3><p className="small">Your free account can store up to three notes. Only you can read them through your account.</p>
+    <div className="cloud-settings"><h3>Cloud project notes</h3><p className="small">Your current limit is {noteLimit} notes. Only you can read them through your account.</p>
       <form onSubmit={addNote} className="account-form"><label>Project<input maxLength={100} value={noteProject} onChange={(event) => setNoteProject(event.target.value)} /></label>
-        <label>Note<textarea maxLength={2000} value={noteText} onChange={(event) => setNoteText(event.target.value)} /></label><button disabled={notes.length >= 3}>Save note</button></form>
+        <label>Note<textarea maxLength={2000} value={noteText} onChange={(event) => setNoteText(event.target.value)} /></label><button disabled={notes.length >= noteLimit}>Save note</button></form>
       <ul>{notes.map((note) => <li key={note.id}><strong>{note.project}:</strong> {note.note} <button type="button" onClick={() => void deleteNote(note.id)}>Delete</button></li>)}</ul></div>
   </section>
 }

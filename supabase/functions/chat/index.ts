@@ -39,6 +39,7 @@ Deno.serve(async (request) => {
   if (lookupError || !conversation) return reply(request, { error: 'Conversation not found' }, 404)
 
   const isCrisis = isCrisisText(text)
+  if (isCrisis) return reply(request, { reply: crisisGuidance, safetyFlag: true, notSaved: true })
   if (!isCrisis) {
     if (!Deno.env.get('OPENAI_API_KEY')) return reply(request, { error: 'AI service not configured' }, 503)
     const { data: allowed, error: quotaError } = await userClient.rpc('claim_free_chat_turn')

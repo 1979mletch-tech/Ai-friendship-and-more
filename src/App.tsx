@@ -421,7 +421,10 @@ const App = () => {
         Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
         in safe preview mode.
       </p>
-      <p className="warn">{billing.setupMessage} No payment or paid access is available yet.</p>
+      <p className="warn">{billing.setupMessage} {billing.provider === 'stripe' && cloudConfigured
+        ? 'To use hosted checkout, sign in under Account & AI chat. Paid access begins only after Stripe confirmation.'
+        : 'No payment or paid access is available in this deployment.'}</p>
+      {billing.provider === 'stripe' && cloudConfigured && <a href="#/cloud">Go to account and billing</a>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
