@@ -64,6 +64,7 @@ const App = () => {
   const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [chatStatus, setChatStatus] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
@@ -139,8 +140,8 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.companionName, companionName), [companionName])
 
   const sendMessage = async () => {
-    if (!input.trim() || !hasConsent) return
-    const userText = input.trim()
+    if (!input.trim() || !hasConsent || isSending) return
+    const userText = input.trim().slice(0, 2000)
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
     let response = getAssistantResponse(userText, chatMode)
@@ -152,6 +153,7 @@ const App = () => {
 
     if (session && !isCrisisTextForClient(userText)) {
       setIsSending(true)
+      setChatStatus('AI is responding…')
       try {
         const cloud = await sendCloudChat(
           session,
@@ -160,8 +162,10 @@ const App = () => {
           companionName,
         )
         response = cloud.reply
+        setChatStatus('')
       } catch {
         response = getAssistantResponse(userText, chatMode) + ' Live AI is unavailable, so this is the local fallback response.'
+        setChatStatus('Live AI was unavailable. A local fallback response was used.')
       } finally {
         setIsSending(false)
       }
@@ -280,6 +284,8 @@ const App = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Share what’s on your mind or your project."
+          maxLength={2000}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() } }}
         />
         <button
           type="button"
@@ -289,6 +295,7 @@ const App = () => {
           Send
         </button>
       </div>
+      {chatStatus && <p className="small" role="status" aria-live="polite">{chatStatus}</p>}
       <p className="small">
         Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
