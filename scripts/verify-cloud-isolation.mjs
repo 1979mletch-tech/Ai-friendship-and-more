@@ -44,13 +44,6 @@ const a = await signIn(process.env.STAGING_TEST_EMAIL_A, process.env.STAGING_TES
 const b = await signIn(process.env.STAGING_TEST_EMAIL_B, process.env.STAGING_TEST_PASSWORD_B)
 assert(a.id !== b.id, 'Test accounts must be different users')
 
-for (const table of ['conversations', 'memories', 'profiles']) {
-  const anonymous = await request(`/rest/v1/${table}?select=*&limit=1`, null)
-  assert(anonymous.status === 200 && Array.isArray(anonymous.payload) && anonymous.payload.length === 0,
-    `${table}: anonymous users cannot read rows`)
-  console.log(`PASS ${table}: anonymous read returns no rows`)
-}
-
 const cases = [
   { table: 'memories', id: randomUUID(), row: { label: 'Isolation test', value: 'synthetic staging fixture' }, update: { value: 'changed by B' } },
   { table: 'conversations', id: randomUUID(), row: { title: 'Isolation test', mode: 'general', messages: [] }, update: { title: 'changed by B' } },
@@ -118,6 +111,12 @@ try {
     JSON.stringify(afterProfile.payload[0]) === JSON.stringify(profile.payload[0]),
     'A profile is unchanged after B update and delete attempts')
   console.log('PASS profiles: cross-account read, update and delete blocked')
+  for (const table of ['conversations', 'memories', 'profiles']) {
+    const anonymous = await request(`/rest/v1/${table}?user_id=eq.${a.id}&select=*`, null)
+    assert(anonymous.status === 200 && Array.isArray(anonymous.payload) && anonymous.payload.length === 0,
+      `${table}: anonymous users cannot read A's existing row`)
+    console.log(`PASS ${table}: anonymous read of existing row returns no rows`)
+  }
 } finally {
   if (createdProfile) await request(`/rest/v1/profiles?user_id=eq.${a.id}`, a.token, 'DELETE')
   for (const item of cases) await request(`/rest/v1/${item.table}?id=eq.${item.id}&user_id=eq.${a.id}`, a.token, 'DELETE')
