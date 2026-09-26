@@ -1,0 +1,2 @@
+import{describe,expect,it,vi}from'vitest';import{memoryApi}from'./memoryApi'
+describe('memory api',()=>{it('sends memory in POST body and not URL',async()=>{vi.stubEnv('VITE_API_BASE_URL','https://api.test');const f=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({})});vi.stubGlobal('fetch',f);await memoryApi.save({user:{id:'u',email:'a@b.test'},accessToken:'tok'},'music','likes jazz');expect(f.mock.calls[0][0]).toBe('https://api.test/memories');expect(f.mock.calls[0][1].body).toContain('likes jazz');vi.unstubAllGlobals();vi.unstubAllEnvs()})})
