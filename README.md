@@ -97,4 +97,6 @@ Never commit secrets. **Do not put OpenAI or other private AI-provider keys in a
 
 The current build stores chat history, project notes, consent, plan choice, companion name and user-controlled memory in browser localStorage. This is a preview/local fallback, not an authenticated private cloud account. The UI labels that limitation explicitly.
 
-See `SECURITY.md` and `PRODUCTION_CHECKLIST.md` before production deployment.
+See `SECURITY.md`, `THREAT_MODEL.md`, `DEPLOYMENT.md`, and `PRODUCTION_CHECKLIST.md` before production deployment.
+
+The repository now contains Supabase migrations and authenticated Edge Function foundations for cloud conversations/memory, live AI, per-user usage limiting, and account deletion. These are **code-built foundations** until configured and verified against a real Supabase staging project. Do not describe them as live-tested until that verification is complete.
