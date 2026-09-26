@@ -11,7 +11,7 @@ import { sendCloudChat } from './services/chatService'
 import { backupConversation, backupMemoryItems } from './services/cloudSyncService'
 import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
-import { accountDataKeys, localAccountKey } from './utils/localAccountScope'
+import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -457,7 +457,7 @@ const App = () => {
       </label>
       <p className="small">AI Aurora always remains clearly identified as AI even when you choose a companion name.</p>
       <h3>Data controls</h3>
-      <p className="small">Deleting local data removes chat, project notes and memory from this browser. It does not claim to delete data from external providers.</p>
+      <p className="small">Deleting local data removes this {session ? 'account’s' : 'guest’s'} chat, project notes and memory from this browser. Any cloud backup must be deleted separately by deleting the account.</p>
       <div className="account-actions">
         <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
           messages, memory: memoryItems, projectNotes, companionName,
@@ -465,7 +465,7 @@ const App = () => {
         <button type="button" onClick={clearLocalData}>Delete local chat, memory + project data</button>
       </div>
       <h3>Account status</h3>
-      <p className="warn">Account sign-in and cloud sync are not enabled in this preview build. Do not treat this device-only storage as a private account vault.</p>
+      <p className="warn">{hasCloudAuth() ? 'Local data is kept separately for each signed-in account on this browser. Cloud backup is manual and still requires staging verification.' : 'Cloud accounts are not configured in this preview. Local browser storage is not a private account vault.'}</p>
     </section>
   )
 
@@ -503,7 +503,7 @@ const App = () => {
               if (!confirmed) return
               try {
                 await deleteAccount(session)
-                clearLocalData()
+                safeLocalStorageDelete(...accountDeletionKeys(session))
                 activateSession(null)
                 setAuthStatus('Account deleted.')
               } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
