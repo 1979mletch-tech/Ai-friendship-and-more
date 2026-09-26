@@ -1,4 +1,5 @@
 import { hasCloudAuth, readCloudConfig } from '../config/cloud'
+import { normalizeEmailAddress, passwordLengthOk, validEmailAddress } from '../utils/accountValidation'
 
 export type AuthSession = {
   accessToken: string
@@ -34,9 +35,20 @@ const request = async (path: string, body: unknown) => {
   return payload
 }
 
-export const signUp = async (email: string, password: string) => normalizeSession(await request('signup', { email, password }))
-export const signIn = async (email: string, password: string) => normalizeSession(await request('token?grant_type=password', { email, password }))
-export const requestPasswordReset = async (email: string) => { await request('recover', { email }) }
+const checkedEmail = (email: string) => {
+  if (!validEmailAddress(email)) throw new Error('Enter a valid email address.')
+  return normalizeEmailAddress(email)
+}
+
+export const signUp = async (email: string, password: string) => {
+  if (!passwordLengthOk(password)) throw new Error('Password must be between 8 and 128 characters.')
+  return normalizeSession(await request('signup', { email: checkedEmail(email), password }))
+}
+export const signIn = async (email: string, password: string) => {
+  if (!password) throw new Error('Enter your password.')
+  return normalizeSession(await request('token?grant_type=password', { email: checkedEmail(email), password }))
+}
+export const requestPasswordReset = async (email: string) => { await request('recover', { email: checkedEmail(email) }) }
 
 export const saveSession = (session: AuthSession | null) => {
   if (!session) localStorage.removeItem(SESSION_KEY)
