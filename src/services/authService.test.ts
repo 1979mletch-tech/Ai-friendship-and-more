@@ -28,6 +28,14 @@ describe('auth service', () => {
     expect(loadSession()).toBeNull()
   })
 
+  it('drops expired cached sessions', () => {
+    localStorage.setItem('ai_friendship_auth_session', JSON.stringify({
+      accessToken: 'expired', refreshToken: '', expiresAt: Date.now() - 1,
+      user: { id: 'u1', email: 'user@example.test' },
+    }))
+    expect(loadSession()).toBeNull()
+  })
+
   it('requires configured cloud auth', async () => {
     vi.stubEnv('VITE_SUPABASE_URL', '')
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
