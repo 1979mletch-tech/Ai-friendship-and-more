@@ -3,3 +3,6 @@ import { buildDataExport, serializeDataExport } from './privacyExport'
 describe('privacy export',()=>{
  it('exports only supplied user data',()=>{const out=serializeDataExport(buildDataExport({name:'Friend'},[{id:'c1'}],[{id:'m1'}])); expect(out).toContain('"c1"'); expect(out).toContain('"m1"'); expect(out).not.toContain('password')})
 })
+
+import{serializeDataExport}from'./privacyExport'
+describe('export credential guard',()=>{it('blocks token-shaped data',()=>expect(()=>serializeDataExport({exportedAt:'x',companion:{accessToken:'secret'},conversations:[],memories:[]})).toThrow('Export blocked'))})
