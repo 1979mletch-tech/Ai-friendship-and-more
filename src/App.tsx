@@ -176,6 +176,18 @@ const App = () => {
     setProjectNotes([])
   }
 
+  const exportLocalData = () => {
+    const data = JSON.stringify({ exportedAt: new Date().toISOString(), messages, projectNotes }, null, 2)
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ai-friendship-local-data-${getLocalDayKey(new Date())}.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   const renderHome = () => (
     <section className="panel">
       <h1>AI Friendship</h1>
@@ -306,7 +318,8 @@ const App = () => {
       <ul>
         {visibleProjectNotes.map((item) => (
           <li key={item.id}>
-            <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}
+            <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}{' '}
+            <button type="button" aria-label={`Delete note for ${item.project}`} onClick={() => setProjectNotes((current) => current.filter((note) => note.id !== item.id))}>Delete note</button>
           </li>
         ))}
       </ul>
@@ -361,7 +374,7 @@ const App = () => {
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>This browser app has no live AI service or account database. Chat uses fixed local responses; messages and notes remain in this browser unless you clear them.</li>
         <li>Never enter provider secrets into browser environment variables.</li>
-        <li>You can clear chat history and creative notes locally at any time.</li>
+        <li>You can export or clear your local chat and creative notes at any time. Store exported files securely.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
         <li>A future live AI service would send messages to its provider and require updated disclosures.</li>
       </ul>
@@ -372,9 +385,12 @@ const App = () => {
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <div className="starters">
+        <button type="button" onClick={exportLocalData}>Export my local data (JSON)</button>
+        <button type="button" onClick={() => setMessages([])}>Delete local chat history</button>
+        <button type="button" onClick={() => setProjectNotes([])}>Delete local project notes</button>
+        <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
+      </div>
     </section>
   )
 
