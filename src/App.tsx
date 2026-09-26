@@ -370,7 +370,7 @@ const App = () => {
         <textarea value={companion.interests} maxLength={300} onChange={(e) => setCompanion({ ...companion, interests: e.target.value })} placeholder="Music, films, books, everyday life, creative projects…" />
       </label>
       <button type="button" onClick={() => { void saveCompanion() }}>Save & start chatting</button>
-      {setupError && <p className="warn" role="alert">{setupError}</p>
+      {setupError && <p className="warn" role="alert">{setupError}</p>}
       <p className="small">This setup is stored locally in preview mode. It does not make the companion human or create an exclusive relationship.</p>
     </section>
   )
