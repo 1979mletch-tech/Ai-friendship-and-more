@@ -88,6 +88,9 @@ const App = () => {
   const [chatError, setChatError] = useState('')
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState('')
+  const [privacyBusy, setPrivacyBusy] = useState(false)
+  const [privacyError, setPrivacyError] = useState('')
+  const [memoryError, setMemoryError] = useState('')
   const [syncStatus, setSyncStatus] = useState<SyncState>('local')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
@@ -248,15 +251,17 @@ const App = () => {
   }
 
   const clearLocalData = async () => {
+    setPrivacyBusy(true); setPrivacyError('')
     const env = readAppEnv()
     if (session && env.authMode === 'server' && env.apiBaseUrl) {
-      try { await Promise.all([privacyApi.clearConversations(session), privacyApi.clearMemories(session)]) } catch { setChatError('Server data could not be cleared. Nothing was silently claimed deleted.'); return }
+      try { await Promise.all([privacyApi.clearConversations(session), privacyApi.clearMemories(session)]) } catch { setPrivacyError('Server data could not be cleared. Nothing was silently claimed deleted.'); setPrivacyBusy(false); return }
     }
     safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes, STORAGE_KEYS.memories, STORAGE_KEYS.conversations, STORAGE_KEYS.activeConversation)
     setProjectNotes([])
     setMemories([])
     setConversations([])
     setActiveConversationId('default')
+    setPrivacyBusy(false)
   }
 
   const runAuth = async (kind: 'login' | 'register') => {
@@ -499,7 +504,7 @@ const App = () => {
   )
 
   const deleteNote = (id: string) => setProjectNotes((current) => current.filter((item) => item.id !== id))
-  const addMemory = async () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; const local = sanitizeMemory(memoryLabel, memoryValue); const env = readAppEnv(); try { if (session && env.authMode === 'server' && env.apiBaseUrl) { const saved = await memoryApi.save(session, local.label, local.value); setMemories((current) => [saved, ...current]) } else setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } catch { setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } }
+  const addMemory = async () => { if (!memoryLabel.trim() || !memoryValue.trim()) return; const local = sanitizeMemory(memoryLabel, memoryValue); const env = readAppEnv(); try { if (session && env.authMode === 'server' && env.apiBaseUrl) { const saved = await memoryApi.save(session, local.label, local.value); setMemories((current) => [saved, ...current]) } else setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } catch { setMemoryError('Saved on this device, but it could not be synced to your account.'); setMemories((current) => [local, ...current]); setMemoryLabel(''); setMemoryValue('') } }
   const forgetMemory = async (item: MemoryItem) => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.remove(session, item.id) } catch { return } } setMemories((current) => removeMemory(current, item.id)) }
   const forgetAllMemories = async () => { const env = readAppEnv(); if (session && env.authMode === 'server' && env.apiBaseUrl) { try { await memoryApi.clear(session) } catch { return } } safeLocalStorageDelete(STORAGE_KEYS.memories); setMemories([]) }
 
@@ -511,7 +516,8 @@ const App = () => {
         <label>Memory label<input value={memoryLabel} maxLength={60} onChange={(e) => setMemoryLabel(e.target.value)} placeholder="e.g. Favourite music" /></label>
         <label>What to remember<textarea value={memoryValue} maxLength={500} onChange={(e) => setMemoryValue(e.target.value)} placeholder="Only save something you want remembered." /></label>
       </div>
-      <button type="button" onClick={() => { void addMemory() }} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
+      <button type="button" onClick={() => { setMemoryError(''); void addMemory() }} disabled={!memoryLabel.trim() || !memoryValue.trim()}>Remember this</button>
+      {memoryError && <p className="warn" role="alert">{memoryError}</p>}
       {memories.length === 0 ? <p className="small">No approved memories saved.</p> : <ul>{memories.map((item) => <li key={item.id}><strong>{item.label}:</strong> {item.value}{' '}<button type="button" onClick={() => { void forgetMemory(item) }}>Forget this</button></li>)}</ul>}
       <button type="button" disabled={memories.length === 0} onClick={() => { void forgetAllMemories() }}>Forget all approved memories</button>
       <h3>Creative project notes</h3>
@@ -606,10 +612,11 @@ const App = () => {
         <button type="button" onClick={() => { void exportMyData() }}>
           Export my local data
         </button>
-        <button type="button" onClick={clearLocalData}>
-          Delete my local memory + history
+        <button type="button" disabled={privacyBusy} onClick={clearLocalData}>
+          {privacyBusy ? 'Deleting…' : 'Delete my local memory + history'}
         </button>
       </div>
+      {privacyError && <p className="warn" role="alert">{privacyError}</p>}
     </section>
   )
 
