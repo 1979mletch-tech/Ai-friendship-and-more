@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
@@ -13,6 +13,8 @@ import { createExportBundle, downloadJson } from './utils/exportData'
 import { routeRequiresAdultGate } from './utils/adultRoutes'
 import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
 import { previewActivePlan } from './utils/planGuard'
+import { ChatRequestGate } from './utils/chatRequestGate'
+import { removeHistoryTurn } from './utils/history'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -65,6 +67,7 @@ const App = () => {
   const [authStatus, setAuthStatus] = useState('')
   const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
   const [isSending, setIsSending] = useState(false)
+  const chatGate = useRef(new ChatRequestGate())
   const [chatStatus, setChatStatus] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
@@ -79,6 +82,7 @@ const App = () => {
   const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Friend'))
   const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
   const [memoryDraft, setMemoryDraft] = useState('')
+  const [historyQuery, setHistoryQuery] = useState('')
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
@@ -146,6 +150,8 @@ const App = () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     const userText = input.trim().slice(0, 2000)
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
+    const generation = chatGate.current.begin()
+    if (generation === null) return
 
     let response = getAssistantResponse(userText, chatMode)
     const localDayKey = getLocalDayKey(new Date())
@@ -170,9 +176,12 @@ const App = () => {
         response = getAssistantResponse(userText, chatMode) + ' Live AI is unavailable, so this is the local fallback response.'
         setChatStatus('Live AI was unavailable. A local fallback response was used.')
       } finally {
-        setIsSending(false)
+        if (chatGate.current.isCurrent(generation)) setIsSending(false)
       }
     }
+
+    if (!chatGate.current.isCurrent(generation)) return
+    chatGate.current.finish(generation)
 
     setMessages((current) => [
       ...current,
@@ -202,6 +211,9 @@ const App = () => {
   }
 
   const clearLocalData = () => {
+    chatGate.current.invalidate()
+    setIsSending(false)
+    setChatStatus('')
     safeLocalStorageDelete(...accountDataKeys(session))
     setMessages([])
     setProjectNotes([])
@@ -209,6 +221,9 @@ const App = () => {
   }
 
   const activateSession = (next: AuthSession | null) => {
+    chatGate.current.invalidate()
+    setIsSending(false)
+    setChatStatus('')
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
     setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
@@ -216,6 +231,7 @@ const App = () => {
     setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
     setInput('')
     setMemoryDraft('')
+    setHistoryQuery('')
     setProject('')
     setTags('')
     setNote('')
@@ -405,19 +421,22 @@ const App = () => {
   const renderHistory = () => (
     <section className="panel">
       <h2>Conversation History</h2>
-      <p className="small">History is stored on this device in the current preview build. Production account sync is not enabled yet.</p>
-      {messages.length === 0 ? <p>No saved messages yet.</p> : (
+      <p className="small">History is stored for this {session ? 'account' : 'guest'} in this browser. Cloud backup is manual; automatic sync is not enabled.</p>
+      <label>Search history<input type="search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search messages" /></label>
+      <p className="small">{messages.filter((message) => message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())).length} matching messages</p>
+      {messages.length === 0 ? <p>No saved messages yet.</p> : messages.every((message) => !message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())) ? <p>No messages match your search.</p> : (
         <ul className="history-list">
-          {messages.map((msg) => (
+          {messages.filter((message) => message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())).map((msg) => (
             <li key={msg.id}>
               <strong>{msg.role === 'assistant' ? companionName : 'You'}</strong>
               <span>{msg.text}</span>
               <small>{msg.createdAt ? new Date(msg.createdAt).toLocaleString() : 'Saved locally'}</small>
+              <button type="button" aria-label={`Delete message turn from ${msg.role === 'assistant' ? companionName : 'You'}`} onClick={() => { chatGate.current.invalidate(); setIsSending(false); setMessages((current) => removeHistoryTurn(current, msg.id)) }}>Delete turn</button>
             </li>
           ))}
         </ul>
       )}
-      <button type="button" onClick={() => { safeLocalStorageDelete(localAccountKey(STORAGE_KEYS.messages, session)); setMessages([]) }}>
+      <button type="button" disabled={messages.length === 0} onClick={() => { if (!window.confirm('Delete all local conversation history for this browser identity? Cloud backups are not deleted.')) return; chatGate.current.invalidate(); setIsSending(false); setChatStatus(''); safeLocalStorageDelete(localAccountKey(STORAGE_KEYS.messages, session), localAccountKey('ai_friendship_cloud_conversation_id', session)); setMessages([]) }}>
         Clear conversation history
       </button>
     </section>
