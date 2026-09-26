@@ -3,7 +3,7 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, isCrisisText } from './utils/safety'
+import { crisisGuidance, disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
 type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
@@ -56,7 +56,9 @@ const App = () => {
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
-  const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  // Paid entitlements require a verified server subscription. Local selections are previews only.
+  const [previewPlanId, setPreviewPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  const planId: PlanId = 'free'
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -118,19 +120,18 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, previewPlanId), [previewPlanId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
-    if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
-
     const crisis = isCrisisText(userText)
+    if (!crisis && todayUserMessages >= entitlements.usageLimits.dailyMessages) return
 
     const response = crisis
-      ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
+      ? crisisGuidance
       : chatMode === 'creative'
         ? 'Let’s keep your creative momentum going. Want a quick spark, a project check-in, or gentle feedback on your latest idea?'
         : 'I’m here with you. We can reflect, brainstorm, or just talk through what matters right now.'
@@ -210,6 +211,7 @@ const App = () => {
     <section className="panel">
       <h2>Companion Chat</h2>
       <p className="small">{disclosureText}</p>
+      <p className="small">{crisisGuidance}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -259,17 +261,17 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || (todayUserMessages >= entitlements.usageLimits.dailyMessages && !isCrisisText(input))}
         >
           Send
         </button>
       </div>
       <p className="small">
-        Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
+        Daily message usage: {todayUserMessages}. Free plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
       </p>
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit for this plan. Try again tomorrow or choose Pro.</p>
+        <p className="warn">You reached today’s message limit. Crisis guidance remains available. Paid plans are previews until billing is implemented.</p>
       )}
 
       <h3>Creative project memory (local fallback)</h3>
@@ -321,7 +323,7 @@ const App = () => {
         Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
         in safe preview mode.
       </p>
-      <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      <p className="warn">{billing.setupMessage} No payment or paid access is available yet.</p>
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
@@ -336,19 +338,18 @@ const App = () => {
             <button
               type="button"
               aria-label={`Choose ${plan.name}`}
-              aria-current={planId === plan.id}
+              aria-current={previewPlanId === plan.id}
               onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
+                setPreviewPlanId(plan.id)
               }}
             >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
+              {previewPlanId === plan.id ? 'Viewing plan' : 'Preview plan'}
             </button>
           </article>
         ))}
       </div>
       <p className="small">
-        Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
+        Active plan: Free Friend. Viewing: {previewPlanId}. Paid access requires server-verified billing. Safety disclosures, privacy controls, and crisis guidance stay available to everyone.
       </p>
     </section>
   )
@@ -358,10 +359,11 @@ const App = () => {
       <h2>Privacy Centre</h2>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>Secrets must stay in environment variables, never hard-coded.</li>
+        <li>This browser app has no live AI service or account database. Chat uses fixed local responses; messages and notes remain in this browser unless you clear them.</li>
+        <li>Never enter provider secrets into browser environment variables.</li>
         <li>You can clear chat history and creative notes locally at any time.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
-        <li>AI/database providers may process data per their terms and configuration.</li>
+        <li>A future live AI service would send messages to its provider and require updated disclosures.</li>
       </ul>
       <p>
         AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
