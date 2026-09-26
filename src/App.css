@@ -8,3 +8,6 @@
 @media(max-width:760px){.feature-strip{grid-template-columns:1fr}.showcase{grid-template-columns:1fr;gap:1.4rem;margin:3rem 0;padding:.2rem}.privacy-callout{grid-template-columns:1fr;gap:.7rem;padding:1.2rem;margin:3rem 0}.privacy-callout .secondary-cta{justify-self:start}.final-cta{padding:3rem .3rem 2rem}}
 
 .adult-lock{max-width:620px;margin:1rem auto 2rem;padding:1.5rem;border:1px solid #5c5283;border-radius:22px;background:#18142f}.adult-lock button{width:100%;margin:.7rem 0;font-weight:800}.adult-lock>a{display:block;text-align:center}.adult-protected{display:none}.age-notice{padding:.9rem 1rem;margin:1rem 0;border-left:3px solid #b899ff;background:#18142f;border-radius:8px}
+
+.panel,.history-list li,.memory-list li{min-width:0;overflow-wrap:anywhere}
+@media(max-width:760px){nav{overflow-x:visible;flex-wrap:wrap}nav a{white-space:normal}.account-actions button{white-space:normal}}
