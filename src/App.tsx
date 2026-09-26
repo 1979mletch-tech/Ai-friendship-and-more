@@ -85,6 +85,7 @@ const App = () => {
   const [chatError, setChatError] = useState('')
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState('')
+  const [syncStatus, setSyncStatus] = useState<'local'|'syncing'|'synced'|'error'>('local')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
