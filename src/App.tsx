@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
@@ -30,6 +30,7 @@ import { migrateConversations } from './utils/conversationMigration'
 import { authApi, type Session } from './services/apiClient'
 import { readAppEnv } from './config/env'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
+import { shouldResetForAccountChange } from './utils/accountIsolation'
 
 type Route = '/' | '/account' | '/setup' | '/chat' | '/memory' | '/settings' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -84,6 +85,7 @@ const getLocalDayKey = (date: Date): string => {
 
 const App = () => {
   const [route, setRoute] = useState<Route>(parseRoute())
+  const previousUserId = useRef<string | undefined>(undefined)
   const [session, setSession] = useState<Session | null>(() => safeLocalStorageGet(STORAGE_KEYS.session, null))
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
@@ -169,6 +171,14 @@ const App = () => {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    const nextUserId=session?.user.id
+    if (shouldResetForAccountChange(previousUserId.current,nextUserId)) {
+      setConversations([]); setMemories([]); setCompanion({name:'Friend',tone:'warm',interests:''}); setActiveConversationId('default'); setProjectNotes([])
+    }
+    previousUserId.current=nextUserId
+  },[session?.user.id])
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
@@ -318,7 +328,7 @@ const App = () => {
 
   const signOut = async () => {
     if (session) { try { await authApi.signOut(session.accessToken) } catch { /* clear local session regardless */ } }
-    setSession(null)
+    setSession(null); setConversations([]); setMemories([]); setCompanion({name:'Friend',tone:'warm',interests:''}); setActiveConversationId('default'); setProjectNotes([])
   }
 
   const renderAccount = () => (
