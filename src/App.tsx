@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
-import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
@@ -26,7 +25,6 @@ type ProjectNote = {
 
 const STORAGE_KEYS = {
   consent: 'ai_friendship_consent',
-  plan: 'ai_friendship_plan',
   messages: 'ai_friendship_messages',
   notes: 'ai_friendship_project_notes',
 }
@@ -38,11 +36,6 @@ const parseRoute = (): Route => {
   }
   return '/'
 }
-
-const validPlanIds: PlanId[] = ['free', 'pro-monthly', 'pro-annual']
-
-const normalizePlanId = (value: unknown): PlanId =>
-  typeof value === 'string' && validPlanIds.includes(value as PlanId) ? (value as PlanId) : 'free'
 
 const getLocalDayKey = (date: Date): string => {
   const year = date.getFullYear()
@@ -56,7 +49,8 @@ const App = () => {
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(STORAGE_KEYS.consent, false),
   )
-  const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  // No trusted billing or entitlement service exists yet. Browser storage cannot grant a paid plan.
+  const planId = 'free' as const
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -68,7 +62,7 @@ const App = () => {
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
       safeLocalStorageGet(STORAGE_KEYS.notes, []),
-      normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
+      planId,
     ),
   )
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
@@ -118,16 +112,14 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
   const sendMessage = () => {
     if (!input.trim() || !hasConsent) return
     const userText = input.trim()
-    if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
-
     const crisis = isCrisisText(userText)
+    if (todayUserMessages >= entitlements.usageLimits.dailyMessages && !crisis) return
 
     const response = crisis
       ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
@@ -209,6 +201,7 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <h2>Companion Chat</h2>
+      <p className="warn">Preview: replies are scripted examples. Live AI chat is not connected.</p>
       <p className="small">{disclosureText}</p>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
@@ -259,7 +252,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || (!isCrisisText(input) && todayUserMessages >= entitlements.usageLimits.dailyMessages)}
         >
           Send
         </button>
@@ -269,7 +262,7 @@ const App = () => {
         {entitlements.usageLimits.dailyMessages}.
       </p>
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit for this plan. Try again tomorrow or choose Pro.</p>
+        <p className="warn">You reached today’s message limit. Urgent safety messages still work.</p>
       )}
 
       <h3>Creative project memory (local fallback)</h3>
@@ -318,10 +311,9 @@ const App = () => {
     <section className="panel">
       <h2>Pricing & Subscription</h2>
       <p>
-        Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
-        in safe preview mode.
+        Paid plans are proposed previews. Checkout is not available yet; the free plan is the only active plan.
       </p>
-      <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      <p className="warn">{billing.setupMessage}</p>
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
@@ -333,22 +325,12 @@ const App = () => {
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
-            <button
-              type="button"
-              aria-label={`Choose ${plan.name}`}
-              aria-current={planId === plan.id}
-              onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
-              }}
-            >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
-            </button>
+            <p className="small">{plan.id === 'free' ? 'Current plan' : 'Coming soon — no payment taken'}</p>
           </article>
         ))}
       </div>
       <p className="small">
-        Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
+        Current plan: Free. Safety disclosures, privacy controls, and crisis guidance remain available.
       </p>
     </section>
   )
