@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countUserMessagesForDay, remainingMessages } from './usage'
+import { canSendAtLimit, countUserMessagesForDay, remainingMessages } from './usage'
 
 describe('usage helpers', () => {
   const messages = [
@@ -8,4 +8,8 @@ describe('usage helpers', () => {
   ]
   it('counts user messages only', () => expect(countUserMessagesForDay(messages, '2026-09-26')).toBe(1))
   it('never returns negative remaining usage', () => expect(remainingMessages(12, 10)).toBe(0))
+  it('keeps urgent safety guidance available when the ordinary quota is exhausted', () => {
+    expect(canSendAtLimit('I want to die tonight', 25, 25)).toBe(true)
+    expect(canSendAtLimit('Could we brainstorm a title?', 25, 25)).toBe(false)
+  })
 })
