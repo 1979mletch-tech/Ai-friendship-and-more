@@ -17,6 +17,7 @@ import { previewActivePlan } from './utils/planGuard'
 import { ChatRequestGate } from './utils/chatRequestGate'
 import { removeHistoryTurn } from './utils/history'
 import { sanitizeImportedMessages } from './utils/conversationImport'
+import { canSendAtLimit } from './utils/usage'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -155,7 +156,7 @@ const App = () => {
   const sendMessage = async () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     const userText = input.trim().slice(0, 2000)
-    if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
+    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages)) return
     const generation = chatGate.current.begin()
     if (generation === null) return
 
@@ -377,7 +378,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || isSending || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || isSending || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
         >
           Send
         </button>
@@ -388,7 +389,7 @@ const App = () => {
         {entitlements.usageLimits.dailyMessages}.
       </p>
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit for this plan. Try again tomorrow or choose Pro.</p>
+        <p className="warn">You reached today’s message limit. Urgent safety guidance remains available; paid plans are not active yet.</p>
       )}
 
       <h3>Creative project memory (local fallback)</h3>
