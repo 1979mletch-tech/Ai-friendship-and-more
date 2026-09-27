@@ -3,7 +3,9 @@ name: AI Friendship preview
 on:
   workflow_dispatch:
   push:
-    branches: [chatgpt/ai-friendship-build]
+    branches:
+      - chatgpt/ai-friendship-build
+      - 'codex/**'
 
 permissions:
   contents: read
@@ -28,6 +30,13 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Preserve verified build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-friendship-dist-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/configure-pages@v5
         with:
           enablement: true
