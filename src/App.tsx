@@ -1,27 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
+import { downloadLocalData, MAX_MESSAGE_LENGTH, MAX_NOTE_LENGTH, MAX_PROJECT_LENGTH, readMessages, readNotes, type ChatMessage, type ProjectNote } from './utils/chatData'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
 import { disclosureText, isCrisisText } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive' | '/safety'
 type ChatMode = 'general' | 'creative'
-
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  createdAt?: string
-  dayKey?: string
-}
-
-type ProjectNote = {
-  id: string
-  project: string
-  tags: string
-  note: string
-}
 
 const STORAGE_KEYS = {
   consent: 'ai_friendship_consent',
@@ -31,7 +17,7 @@ const STORAGE_KEYS = {
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive' || hash === '/safety') {
     return hash
   }
   return '/'
@@ -53,15 +39,17 @@ const App = () => {
   const planId = 'free' as const
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [deletePending, setDeletePending] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.messages, []),
+    readMessages(safeLocalStorageGet(STORAGE_KEYS.messages, [])),
   )
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
-      safeLocalStorageGet(STORAGE_KEYS.notes, []),
+      readNotes(safeLocalStorageGet(STORAGE_KEYS.notes, [])),
       planId,
     ),
   )
@@ -73,12 +61,12 @@ const App = () => {
     () => applyProjectNotesLimit(projectNotes, planId),
     [planId, projectNotes],
   )
+  const filteredMessages = useMemo(() => messages.filter((message) => message.text.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())), [messages, search])
   const today = getLocalDayKey(new Date())
   const todayUserMessages = messages.filter(
     (message) =>
       message.role === 'user' &&
-      (message.dayKey ||
-        (message.createdAt ? getLocalDayKey(new Date(message.createdAt)) : '')) === today,
+      message.dayKey === today,
   ).length
 
   useEffect(() => {
@@ -116,7 +104,7 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
 
   const sendMessage = () => {
-    if (!input.trim() || !hasConsent) return
+    if (!input.trim() || input.length > MAX_MESSAGE_LENGTH || !hasConsent) return
     const userText = input.trim()
     const crisis = isCrisisText(userText)
     if (todayUserMessages >= entitlements.usageLimits.dailyMessages && !crisis) return
@@ -129,28 +117,28 @@ const App = () => {
 
     const localDayKey = getLocalDayKey(new Date())
 
-    setMessages((current) => [
+    setMessages((current) => [...current,
       ...current,
       {
         id: crypto.randomUUID(),
-        role: 'user',
+        role: 'user' as const,
         text: userText,
         createdAt: new Date().toISOString(),
         dayKey: localDayKey,
       },
       {
         id: crypto.randomUUID(),
-        role: 'assistant',
+        role: 'assistant' as const,
         text: response,
         createdAt: new Date().toISOString(),
         dayKey: localDayKey,
       },
-    ])
+    ].slice(-500))
     setInput('')
   }
 
   const addProjectNote = () => {
-    if (!project.trim() || !note.trim()) return
+    if (!project.trim() || !note.trim() || project.length > MAX_PROJECT_LENGTH || note.length > MAX_NOTE_LENGTH) return
     if (visibleProjectNotes.length >= entitlements.usageLimits.projectNotesLimit) return
     setProjectNotes((current) => [
       ...current,
@@ -165,6 +153,7 @@ const App = () => {
     safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes)
     setMessages([])
     setProjectNotes([])
+    setDeletePending(false)
   }
 
   const renderHome = () => (
@@ -203,6 +192,7 @@ const App = () => {
       <h2>Companion Chat</h2>
       <p className="warn">Preview: replies are scripted examples. Live AI chat is not connected.</p>
       <p className="small">{disclosureText}</p>
+      <a href="#/safety">Urgent help and safety information</a>
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -228,35 +218,42 @@ const App = () => {
         </div>
       )}
 
+      <label className="search-label">Search local conversation
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search messages" />
+      </label>
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
-        {messages.length === 0 ? (
-          <p className="small">No messages yet. Start with a topic starter or your own question.</p>
+        {filteredMessages.length === 0 ? (
+          <p className="small">{search ? 'No matching messages.' : 'No messages yet. Start with a topic starter or your own question.'}</p>
         ) : (
           <ul>
-            {messages.map((msg) => (
+            {filteredMessages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
                 <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <button className="subtle" type="button" aria-label={`Delete ${msg.role} message`} onClick={() => setMessages((current) => current.filter((item) => item.id !== msg.id))}>Delete</button>
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="input-row">
-        <input
-          aria-label="Message input"
+      <form className="input-row" onSubmit={(e) => { e.preventDefault(); sendMessage() }}>
+        <label htmlFor="chat-input">Your message</label>
+        <textarea
+          id="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Share what’s on your mind or your project."
+          maxLength={MAX_MESSAGE_LENGTH}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
         />
         <button
-          type="button"
-          onClick={sendMessage}
-          disabled={!hasConsent || (!isCrisisText(input) && todayUserMessages >= entitlements.usageLimits.dailyMessages)}
+          type="submit"
+          disabled={!input.trim() || !hasConsent || (!isCrisisText(input) && todayUserMessages >= entitlements.usageLimits.dailyMessages)}
         >
           Send
         </button>
-      </div>
+      </form>
+      <p className="small">{input.length}/{MAX_MESSAGE_LENGTH} characters. Enter sends; Shift+Enter adds a line.</p>
       <p className="small">
         Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
@@ -272,13 +269,14 @@ const App = () => {
       <div className="grid">
         <label>
           Project name
-          <input value={project} onChange={(e) => setProject(e.target.value)} placeholder="Project name" />
+          <input value={project} onChange={(e) => setProject(e.target.value)} maxLength={MAX_PROJECT_LENGTH} placeholder="Project name" />
         </label>
         <label>
           Project tags
           <input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
+            maxLength={MAX_PROJECT_LENGTH}
             placeholder="Tags: mood, style, deadline"
           />
         </label>
@@ -288,6 +286,7 @@ const App = () => {
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
+          maxLength={MAX_NOTE_LENGTH}
           placeholder="Project note / idea spark / check-in"
         />
       </label>
@@ -298,12 +297,11 @@ const App = () => {
         {visibleProjectNotes.map((item) => (
           <li key={item.id}>
             <strong>{item.project}</strong> [{item.tags || 'untagged'}]: {item.note}
+            <button className="subtle" type="button" aria-label={`Delete note for ${item.project}`} onClick={() => setProjectNotes((current) => current.filter((entry) => entry.id !== item.id))}>Delete</button>
           </li>
         ))}
       </ul>
-      <button type="button" onClick={clearLocalData}>
-        Clear local chat + project data
-      </button>
+      <a href="#/privacy">Manage or export local data</a>
     </section>
   )
 
@@ -339,11 +337,10 @@ const App = () => {
     <section className="panel">
       <h2>Privacy Centre</h2>
       <ul>
-        <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
-        <li>Secrets must stay in environment variables, never hard-coded.</li>
-        <li>You can clear chat history and creative notes locally at any time.</li>
-        <li>Data collection should stay minimal and purpose-limited.</li>
-        <li>AI/database providers may process data per their terms and configuration.</li>
+        <li>This preview saves messages, notes, and consent in this browser’s local storage. Anyone with access to this browser profile may read them.</li>
+        <li>This preview does not send chat messages to an AI or database provider.</li>
+        <li>Export your local messages and notes as JSON, or delete them below. Browser clearing may also remove them.</li>
+        <li>Future connected versions need a separate privacy policy explaining provider processing, retention, and deletion.</li>
       </ul>
       <p>
         AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
@@ -352,9 +349,28 @@ const App = () => {
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <button type="button" onClick={() => downloadLocalData(messages, projectNotes)}>Export local data</button>{' '}
+      {!deletePending ? <button type="button" onClick={() => setDeletePending(true)}>Delete local messages and notes</button> : (
+        <div role="group" aria-label="Confirm local data deletion">
+          <p className="warn">Delete all saved messages and project notes from this browser?</p>
+          <button type="button" onClick={clearLocalData}>Yes, delete data</button>{' '}
+          <button type="button" onClick={() => setDeletePending(false)}>Cancel</button>
+        </div>
+      )}
+      <label className="consent"><input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} /> Allow preview chat on this browser</label>
+      <p className="small">Turning off consent blocks new messages. Use the delete control above to remove existing data.</p>
+    </section>
+  )
+
+  const renderSafety = () => (
+    <section className="panel">
+      <h2>Safety and urgent help</h2>
+      <p>This scripted preview cannot assess risk, respond reliably to emergencies, or provide therapy.</p>
+      <p className="warn">If you or someone else is in immediate danger, contact your local emergency service now. In the UK, call 999 or 112.</p>
+      <p>In the UK, NHS 111 can help with urgent non-emergency health concerns. It does not replace 999 or 112 for an emergency.</p>
+      <p>If you might harm yourself, move away from anything you could use to hurt yourself and contact emergency services or a trusted person who can stay with you.</p>
+      <p>If you are outside the UK, use your local emergency number and local crisis services.</p>
+      <a href="#/chat">Return to chat preview</a>
     </section>
   )
 
@@ -407,6 +423,9 @@ const App = () => {
     case '/immersive':
       page = renderImmersive()
       break
+    case '/safety':
+      page = renderSafety()
+      break
     default:
       page = renderHome()
       break
@@ -416,12 +435,13 @@ const App = () => {
     <div className="shell">
       <header>
         <h1>AI Friendship V1+</h1>
-        <nav>
+        <nav aria-label="Main navigation">
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>
+          <a href="#/safety">Safety</a>
         </nav>
       </header>
       <main>{page}</main>
