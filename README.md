@@ -27,6 +27,9 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - minimal-data principles
   - provider processing disclosure
 - Consent/disclosure control before active chat
+- Local message search, individual deletion, JSON export, confirmed full deletion, and storage validation
+- Dedicated UK-aware safety information page (the preview is not an emergency service)
+- Message and project-note length limits, keyboard chat controls, mobile layout, and reduced-motion support
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
 ## What remains external / requires credentials or professional review
