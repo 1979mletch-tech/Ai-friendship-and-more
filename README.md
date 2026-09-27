@@ -19,7 +19,7 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
   - Studio Friend Pro ($9.99/month proposed)
   - Studio Friend Annual ($79/year proposed)
 - Subscription service abstraction + environment-configurable billing setup state (Stripe-ready boundary)
-- Plan entitlements + usage-limit helpers (honest local UI states)
+- Plan entitlements + usage-limit helpers (free tier only; paid access is never granted in browser storage)
 - Privacy Centre secure-talk copy in plain language:
   - encryption in transit expectation (HTTPS/TLS in production)
   - secrets via environment variables
@@ -41,6 +41,9 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 ## Billing foundation notes
 
 Current implementation is intentionally safe:
+
+- Chat replies are scripted preview examples; live AI chat is not connected.
+- Paid plan cards are informational only. No browser action grants Pro entitlements.
 
 - If `VITE_BILLING_PROVIDER=none` (default), pricing renders in preview mode.
 - If `VITE_BILLING_PROVIDER=stripe` but required keys/price IDs are missing, UI shows setup-needed state.
