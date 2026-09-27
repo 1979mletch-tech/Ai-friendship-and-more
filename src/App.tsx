@@ -179,9 +179,11 @@ const App = () => {
         )
         response = cloud.reply
         setChatStatus('')
-      } catch {
-        response = getAssistantResponse(userText, chatMode) + ' Live AI is unavailable, so this is the local fallback response.'
-        setChatStatus('Live AI was unavailable. A local fallback response was used.')
+      } catch (error) {
+        if (!chatGate.current.isCurrent(generation)) return
+        chatGate.current.finish(generation)
+        setChatStatus(error instanceof Error ? `Message not sent: ${error.message}` : 'Message not sent. Please try again.')
+        return
       } finally {
         if (chatGate.current.isCurrent(generation)) setIsSending(false)
       }
@@ -202,7 +204,6 @@ const App = () => {
       },
     ])
     setInput('')
-    setAuthPassword('')
   }
 
   const addProjectNote = () => {
@@ -323,10 +324,10 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      {!adultAccess && <div className="adult-lock"><p className="eyebrow">ADULT ACCESS</p><h2>AI Aurora is an 18+ experience.</h2><p>You must be 18 or over to use the interactive companion. Aurora is presented as an adult AI persona (25+) and is never presented as a child or teenager.</p><button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button><a href="#/">Leave interactive experience</a><p className="small">This confirmation is a preview control. Production launch requires the chosen proportionate age-assurance mechanism to be configured and verified.</p></div>}
-      <div className={!adultAccess ? 'adult-protected' : ''} aria-hidden={!adultAccess}>
       <h2>Companion Chat</h2>
+      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       <p className="small">{disclosureText}</p>
+      {!hasConsent && <p className="small" role="status">To send a preview message, tick the disclosure box below first.</p>}
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -370,7 +371,7 @@ const App = () => {
         <input
           aria-label="Message input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); setChatStatus('') }}
           placeholder="Share what’s on your mind or your project."
           maxLength={2000}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() } }}
@@ -431,7 +432,6 @@ const App = () => {
       <button type="button" onClick={clearLocalData}>
         Clear local chat + project data
       </button>
-      </div>
     </section>
   )
 
@@ -723,7 +723,7 @@ const App = () => {
         <button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button>
         <a className="secondary-cta" href="#/">Return home</a>
       </div>
-      <p className="small">Preview control only. Production access will require the configured age-assurance mechanism to pass server-side verification.</p>
+      <p className="small">This confirmation opens the browser preview on this device. It does not verify age for a live account or unlock live AI. After confirming, accept the chat disclosure to send a preview message.</p>
     </section>
   )
 
