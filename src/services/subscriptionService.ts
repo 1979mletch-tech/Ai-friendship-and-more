@@ -9,7 +9,7 @@ export const getSubscriptionState = (env: BillingEnv = readBillingEnv()): Subscr
       provider: 'stripe',
       isConfigured,
       setupMessage: isConfigured
-        ? 'Billing provider configured. Connect checkout + webhooks server-side before production launch.'
+        ? 'Stripe public configuration detected. Checkout, webhooks, and verified paid access are not connected; pricing remains a preview.'
         : 'Stripe selected but missing one or more keys/price IDs. Showing subscription preview only.',
     }
   }
