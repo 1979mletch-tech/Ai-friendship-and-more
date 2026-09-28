@@ -24,7 +24,7 @@ These checks cannot be honestly completed by source inspection:
 3. Deploy the `chat` and `delete-account` Edge Functions.
 4. Set server-only secrets: `OPENAI_API_KEY`, `OPENAI_MODEL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ALLOWED_ORIGIN`.
 5. Configure a real adult-eligibility/age-assurance provider. The browser 18+ control is only a preview control.
-6. Configure Stripe prices and server checkout/webhook handling. Do not put secret Stripe values in `VITE_*`.
+6. Configure the existing Stripe checkout/webhook implementation with the owner's production Stripe account. Follow `docs/STRIPE_PRODUCTION_HANDOFF.md`; keep `BILLING_LIVE_ENABLED=false` until its live-mode verification passes. Do not put secret Stripe values in `VITE_*`.
 7. Run two disposable-account isolation tests against the deployed Supabase project.
 8. Test sign-up, email confirmation, sign-in, sign-out, password reset, expired session, deletion, live AI refusal without adult eligibility, rate limiting, and provider failure handling.
 9. Verify the exact deployed frontend commit on desktop and a real phone before public launch.
