@@ -16,7 +16,7 @@ export const plans: Plan[] = [
   {
     id: 'pro-monthly',
     name: 'Studio Friend Pro',
-    priceLabel: '$9.99/month (proposed)',
+    priceLabel: 'Monthly price shown before payment',
     proposed: true,
     features: [
       'Higher daily usage cap',
@@ -28,7 +28,7 @@ export const plans: Plan[] = [
   {
     id: 'pro-annual',
     name: 'Studio Friend Annual',
-    priceLabel: '$79/year (proposed)',
+    priceLabel: 'Annual price shown before payment',
     proposed: true,
     features: [
       'Everything in Pro monthly',

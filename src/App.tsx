@@ -18,6 +18,8 @@ import { ChatRequestGate } from './utils/chatRequestGate'
 import { removeHistoryTurn } from './utils/history'
 import { sanitizeImportedMessages } from './utils/conversationImport'
 import { canSendAtLimit } from './utils/usage'
+import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
+import { getBillingPlan, openBilling } from './services/billingService'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -63,6 +65,8 @@ const getLocalDayKey = (date: Date): string => {
 }
 
 const App = () => {
+  const publicLiveMode = import.meta.env.VITE_PUBLIC_LIVE_MODE === 'true'
+  const ageVerificationEnabled = import.meta.env.VITE_AGE_VERIFICATION_ENABLED === 'true'
   const [route, setRoute] = useState<Route>(parseRoute())
   const [session, setSession] = useState<AuthSession | null>(() => loadSession())
   const [authEmail, setAuthEmail] = useState('')
@@ -79,8 +83,8 @@ const App = () => {
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
-  // No server-verified billing exists yet. Browser state cannot grant paid limits.
-  const planId: PlanId = previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
+  const [trustedPlan, setTrustedPlan] = useState<PlanId>('free')
+  const planId: PlanId = session ? trustedPlan : previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -148,6 +152,13 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
+  useEffect(() => {
+    let active = true
+    if (session && billing.isConfigured) {
+      void getBillingPlan(session).then((plan) => { if (active) setTrustedPlan(plan) }).catch(() => undefined)
+    }
+    return () => { active = false }
+  }, [session, billing.isConfigured])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.memory, session), memoryItems), [memoryItems, session])
@@ -155,6 +166,7 @@ const App = () => {
 
   const sendMessage = async () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
+    if (publicLiveMode && !session) { setChatStatus('Sign in and complete adult verification to use live chat.'); return }
     const userText = input.trim().slice(0, 2000)
     if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages)) return
     const generation = chatGate.current.begin()
@@ -179,9 +191,11 @@ const App = () => {
         )
         response = cloud.reply
         setChatStatus('')
-      } catch {
-        response = getAssistantResponse(userText, chatMode) + ' Live AI is unavailable, so this is the local fallback response.'
-        setChatStatus('Live AI was unavailable. A local fallback response was used.')
+      } catch (error) {
+        if (!chatGate.current.isCurrent(generation)) return
+        chatGate.current.finish(generation)
+        setChatStatus(error instanceof Error ? `Message not sent: ${error.message}` : 'Message not sent. Please try again.')
+        return
       } finally {
         if (chatGate.current.isCurrent(generation)) setIsSending(false)
       }
@@ -202,7 +216,6 @@ const App = () => {
       },
     ])
     setInput('')
-    setAuthPassword('')
   }
 
   const addProjectNote = () => {
@@ -233,6 +246,7 @@ const App = () => {
     setChatStatus('')
     setCloudConversations(null)
     setCloudMemories(null)
+    setTrustedPlan('free')
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
     setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
@@ -323,10 +337,11 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      {!adultAccess && <div className="adult-lock"><p className="eyebrow">ADULT ACCESS</p><h2>AI Aurora is an 18+ experience.</h2><p>You must be 18 or over to use the interactive companion. Aurora is presented as an adult AI persona (25+) and is never presented as a child or teenager.</p><button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button><a href="#/">Leave interactive experience</a><p className="small">This confirmation is a preview control. Production launch requires the chosen proportionate age-assurance mechanism to be configured and verified.</p></div>}
-      <div className={!adultAccess ? 'adult-protected' : ''} aria-hidden={!adultAccess}>
-      <h2>Companion Chat</h2>
+      <div className="chat-heading"><div className="chat-avatar" aria-hidden="true">A</div><div><p className="eyebrow">AI AURORA</p><h2>Companion Chat</h2><p className="small">A space to think out loud. Aurora is always AI.</p></div></div>
+      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
+      {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
+      {!hasConsent && <p className="small" role="status">To send a preview message, tick the disclosure box below first.</p>}
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -370,7 +385,7 @@ const App = () => {
         <input
           aria-label="Message input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); setChatStatus('') }}
           placeholder="Share what’s on your mind or your project."
           maxLength={2000}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() } }}
@@ -378,7 +393,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || isSending || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
+          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
         >
           Send
         </button>
@@ -431,7 +446,6 @@ const App = () => {
       <button type="button" onClick={clearLocalData}>
         Clear local chat + project data
       </button>
-      </div>
     </section>
   )
 
@@ -513,6 +527,25 @@ const App = () => {
       ) : session ? (
         <>
           <p>Signed in as <strong>{session.user.email}</strong>.</p>
+          <div className="age-notice">
+            <strong>Adult verification for live AI</strong>
+            <p>{ageVerificationEnabled ? 'Stripe Identity checks an ID document. AI Aurora receives only the 18+ result, not your document or date of birth. The service may pay a fee for each completed check.' : 'Live adult verification is being set up. Browser confirmation does not unlock live AI.'}</p>
+            {ageVerificationEnabled && <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const url = await startAgeVerification(session)
+                if (url) window.location.assign(url)
+                else setAuthStatus('Adult status is already verified for this account.')
+              } catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Could not start verification.') }
+            })}>Start adult verification</button>}
+            {ageVerificationEnabled && hasPendingAgeVerification(session) && <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const result = await finishAgeVerification(session)
+                setAuthStatus(result.verified ? 'Adult status verified. Live chat may now be available.' :
+                  result.status === 'not-eligible' ? 'Adult eligibility could not be confirmed.' :
+                  'Verification has not completed. Please finish the Stripe check and try again.')
+              } catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Could not check verification.') }
+            })}>Check verification result</button>}
+          </div>
           <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
           <div className="account-actions">
             <button type="button" disabled={authBusy || messages.length === 0} onClick={() => void runAccountAction(async () => {
@@ -623,12 +656,13 @@ const App = () => {
         in safe preview mode.
       </p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      {billing.isConfigured && <p className="small">Review the exact currency, amount and renewal terms on Stripe Checkout before paying. Paid access starts only after Stripe confirms the subscription.</p>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
             <h3>{plan.name}</h3>
             <p>{plan.priceLabel}</p>
-            {plan.proposed && <p className="small">Proposed price (editable via environment config)</p>}
+            {plan.proposed && <p className="small">The exact price is set in Stripe and confirmed before payment.</p>}
             <ul>
               {plan.features.map((feature) => (
                 <li key={feature}>{feature}</li>
@@ -636,11 +670,18 @@ const App = () => {
             </ul>
             <button
               type="button"
-              aria-label={plan.id === 'free' ? 'Current free plan' : `${plan.name} unavailable until billing is ready`}
+              aria-label={plan.id === 'free' ? 'Current free plan' : `${plan.name} subscription`}
               aria-current={planId === plan.id}
-              disabled={plan.id !== 'free'}
+              disabled={plan.id === 'free' || !billing.isConfigured || !session || authBusy}
+              onClick={() => {
+                if (!session || plan.id === 'free') return
+                void runAccountAction(async () => {
+                  try { await openBilling(session, planId === 'free' ? 'checkout' : 'portal', plan.id) }
+                  catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Billing is unavailable.') }
+                })
+              }}
             >
-              {planId === plan.id ? 'Current plan' : 'Coming later'}
+              {plan.id === 'free' ? 'Free plan' : !billing.isConfigured ? 'Coming later' : !session ? 'Sign in to subscribe' : planId === 'free' ? 'Review secure checkout' : 'Manage subscription'}
             </button>
           </article>
         ))}
@@ -648,6 +689,7 @@ const App = () => {
       <p className="small">
         Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
       </p>
+      {authStatus && <p className="warn" role="status">{authStatus}</p>}
     </section>
   )
 
@@ -723,7 +765,7 @@ const App = () => {
         <button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button>
         <a className="secondary-cta" href="#/">Return home</a>
       </div>
-      <p className="small">Preview control only. Production access will require the configured age-assurance mechanism to pass server-side verification.</p>
+      <p className="small">This confirmation opens the browser preview on this device. It does not verify age for a live account or unlock live AI. After confirming, accept the chat disclosure to send a preview message.</p>
     </section>
   )
 
