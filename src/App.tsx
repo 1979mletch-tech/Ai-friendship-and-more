@@ -20,6 +20,7 @@ import { sanitizeImportedMessages } from './utils/conversationImport'
 import { canSendAtLimit } from './utils/usage'
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
 import { getBillingPlan, openBilling } from './services/billingService'
+import { AuroraPresence } from './components/AuroraPresence'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -337,7 +338,7 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      <div className="chat-heading"><div className="chat-avatar" aria-hidden="true">A</div><div><p className="eyebrow">AI AURORA</p><h2>Companion Chat</h2><p className="small">A space to think out loud. Aurora is always AI.</p></div></div>
+      <AuroraPresence latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
       <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
