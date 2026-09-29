@@ -29,7 +29,27 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      - name: Build preview with public cloud settings when configured
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_CHAT_API_URL: ${{ vars.VITE_CHAT_API_URL }}
+          VITE_PUBLIC_LIVE_MODE: 'false'
+          VITE_AGE_VERIFICATION_ENABLED: 'false'
+          VITE_AURORA_SPEECH_ENABLED: 'false'
+          VITE_BILLING_PROVIDER: 'none'
+        run: |
+          # These three values are public browser settings, never server secrets.
+          # Reject partial or misdirected configuration before publishing a build.
+          if [[ -n "$VITE_SUPABASE_URL$VITE_SUPABASE_ANON_KEY$VITE_CHAT_API_URL" ]]; then
+            if [[ "$VITE_SUPABASE_URL" != 'https://smsewzcyrqxiamqepffz.supabase.co' ||
+                  "$VITE_CHAT_API_URL" != 'https://smsewzcyrqxiamqepffz.supabase.co/functions/v1/chat' ||
+                  "$VITE_SUPABASE_ANON_KEY" != sb_publishable_* ]]; then
+              echo 'Incomplete or invalid public cloud preview configuration.' >&2
+              exit 1
+            fi
+          fi
+          npm run build
       - name: Stamp exact source commit in build
         run: printf '%s\n' "$GITHUB_SHA" > dist/build-commit.txt
       - name: Preserve verified build artifact
