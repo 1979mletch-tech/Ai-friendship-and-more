@@ -70,3 +70,7 @@ Only after every check above passes:
 5. retain webhook evidence and the exact deployed commit SHA.
 
 A green source build alone is not evidence that Stripe production configuration is live.
+
+## Live entitlement boundary
+
+Apply `20260929194020_stripe_live_entitlement_boundary.sql` before deploying the updated billing and webhook functions. It adds a trusted `livemode` column; existing rows default to false and remain Free until a verified live webhook confirms them. The billing endpoint and AI daily quota grant Pro only to active/trialing live rows. A test customer ID is never reused for live Checkout. Keep test and live Stripe keys/webhook secrets isolated. Verify the live subscription lifecycle and failed-payment states before turning on billing. Consider Stripe Tax and any applicable registrations before taking payments.

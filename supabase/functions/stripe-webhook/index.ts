@@ -38,15 +38,17 @@ Deno.serve(async (req) => {
   }
   const admin = createClient(Deno.env.get('SUPABASE_URL') || '', serviceKey)
   const { data: existing, error: readError } = await admin.from('billing_subscriptions')
-    .select('stripe_subscription_id,status').eq('user_id', userId).maybeSingle()
+    .select('stripe_subscription_id,status,livemode').eq('user_id', userId).maybeSingle()
   if (readError) return new Response('Could not check subscription', { status: 503 })
-  if (existing && existing.stripe_subscription_id !== id &&
+  // Never let sandbox traffic overwrite a verified live billing row.
+  if (existing?.livemode === true && subscription.livemode !== true) return new Response('ok')
+  if (existing && existing.livemode === subscription.livemode && existing.stripe_subscription_id !== id &&
       ['active', 'trialing'].includes(existing.status) && !['active', 'trialing'].includes(subscription.status)) {
     return new Response('ok')
   }
   const { error } = await admin.from('billing_subscriptions').upsert({
     user_id: userId, stripe_customer_id: subscription.customer, stripe_subscription_id: id,
-    plan, status: subscription.status, updated_at: new Date().toISOString(),
+    plan, status: subscription.status, livemode: subscription.livemode === true, updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' })
   if (error) return new Response('Could not save subscription', { status: 503 })
   return new Response('ok')
