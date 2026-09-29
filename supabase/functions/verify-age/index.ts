@@ -71,12 +71,15 @@ Deno.serve(async (req) => {
     }
     // The ordinary secret key cannot read DOB. A separately scoped restricted
     // key must retrieve it for the 18+ decision. Never store or return DOB.
-    const details = await fetch(`https://api.stripe.com/v1/identity/verification_sessions/${body.sessionId}?expand%5B%5D=verified_outputs`, {
+    const details = await fetch(`https://api.stripe.com/v1/identity/verification_sessions/${body.sessionId}?expand%5B%5D=verified_outputs.dob`, {
       headers: { Authorization: `Bearer ${dobKey}` },
     }).catch(() => null)
     if (!details?.ok) return json({ error: 'Could not confirm age' }, 503)
     const verifiedSession = await details.json()
-    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified') return json({ error: 'Verification changed' }, 409)
+    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified' ||
+        verifiedSession.client_reference_id !== user.id || verifiedSession.livemode !== true) {
+      return json({ error: 'Verification changed' }, 409)
+    }
     if (!isAdultDob(verifiedSession.verified_outputs?.dob)) return json({ verified: false, status: 'not-eligible' })
     const admin = createClient(url, serviceKey)
     const updated = await admin.auth.admin.updateUserById(user.id, {
