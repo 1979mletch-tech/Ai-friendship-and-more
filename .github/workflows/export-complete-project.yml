@@ -1,0 +1,31 @@
+name: Export complete AI Friendship source
+on:
+  push:
+    branches:
+      - chatgpt/export-ai-friendship-20260929
+jobs:
+  verify-and-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Remove generated and sensitive local files
+        shell: bash
+        run: |
+          rm -rf node_modules dist .next coverage
+          find . -type f \( -name ".env" -o -name ".env.local" -o -name ".env.production" -o -name "*.pem" -o -name "*.key" \) -delete
+          rm -rf .git
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-friendship-complete-source
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
