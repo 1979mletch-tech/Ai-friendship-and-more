@@ -109,3 +109,16 @@ The current build stores chat history, project notes, consent, companion name an
 See `SECURITY.md`, `THREAT_MODEL.md`, `DEPLOYMENT.md`, and `PRODUCTION_CHECKLIST.md` before production deployment.
 
 The repository now contains Supabase migrations and authenticated Edge Function foundations for cloud conversations/memory, live AI, per-user usage limiting, and account deletion. These are **code-built foundations** until configured and verified against a real Supabase staging project. Do not describe them as live-tested until that verification is complete.
+
+### Aurora voice preview
+
+The optional `speak` Edge Function generates MP3 on a deliberate button press. It checks
+Supabase Auth and trusted `app_metadata.adult_verified`, then reserves one request from
+the existing per-user daily/minute quota. Set `OPENAI_API_KEY` and `ALLOWED_ORIGIN`
+server-side, deploy the function, verify an adult test account and only then set
+`VITE_AURORA_SPEECH_ENABLED=true` for the site build. The API key must never be
+published in a `VITE_*` variable. The preview uses OpenAI `gpt-4o-mini-tts` voice
+`marin` with a light Latin American Spanish accent instruction. This is a starting
+voice, not an approved final casting. Test on Android and iPad before enabling it
+for public use. Audio is AI generated and text is sent to the speech provider only
+when the user presses Play; each playback consumes a quota unit.

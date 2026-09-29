@@ -338,7 +338,7 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      <AuroraPresence latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <AuroraPresence session={session} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
       <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
