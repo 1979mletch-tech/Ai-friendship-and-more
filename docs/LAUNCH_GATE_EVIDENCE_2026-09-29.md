@@ -40,3 +40,16 @@ No source-build result is being used as a substitute for those live checks.
 - Deployment drift was detected in the chat Edge Function (older wildcard-CORS fallback) and repaired.
 - After repair, all six deployed Edge Function entrypoints exactly match the candidate branch: chat, delete-account, verify-age, speak, billing, and stripe-webhook.
 - README production status was refreshed so implemented backend/billing foundations are no longer incorrectly listed as absent.
+
+
+## Batch 3 — 30-unit launch push
+
+- Quality gate #402 passed on head `4fc8a592...`.
+- Git comparison confirms candidate is 439 commits ahead of `main` and 0 behind; the merge base is the current main SHA, so no main-branch divergence is present.
+- Supabase RLS is enabled on every public application table.
+- User and Stripe ownership identifiers are non-null; live billing customer/subscription IDs are unique.
+- Both SECURITY DEFINER quota RPCs were reviewed: no anon EXECUTE, authenticated/service-role only, empty search_path, caller identity from auth.uid(), no caller-supplied user ID, and per-user advisory locking. Advisor warnings are documented as intentional architecture.
+- No recent Edge Function traffic was present in the connected backend, so live journey claims remain open.
+- Connected live Stripe account was inspected: zero live products, zero active recurring prices, and zero webhook endpoints. Billing therefore remains correctly fail-closed.
+- Added service-boundary tests for age verification, billing redirects/plan trust, and speech fail-closed/content-type behavior.
+- Added shared security tests for exact 18+ DOB cutoff and Stripe webhook signature freshness/tamper rejection.
