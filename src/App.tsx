@@ -381,6 +381,9 @@ const App = () => {
         </div>
       )}
 
+      {!session && !publicLiveMode && (
+        <p className="age-notice" role="note"><strong>Scripted preview.</strong> This is not a live conversation. Aurora can show a few examples and safety contacts; freeform AI chat needs an adult-verified account and server setup. Saved messages may include examples from an older preview.</p>
+      )}
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
         {messages.length === 0 ? (
           <p className="small">No messages yet. Start with a topic starter or your own question.</p>
