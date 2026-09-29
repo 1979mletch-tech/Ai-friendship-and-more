@@ -42,16 +42,19 @@ It is **not human**, **not a therapist**, **not an emergency service**, and **no
 - Consent/disclosure control before active chat
 - VR-ready immersive preview route with non-headset fallback and explicit “VR Preview / Coming Next” labeling
 
-## What remains external / requires credentials or professional review
+## What remains external / requires credentials, live testing or professional review
 
-- Real billing checkout (Stripe or alternative) and server-side subscription lifecycle
-- Webhook handling (checkout success, subscription updates, cancellations, invoice events)
-- Authenticated server-side AI endpoint, server-verified entitlements and anti-abuse limits
-- Account authentication, cloud conversation sync and user-scoped memory
-- Database migrations/RLS plus two-account isolation verification
-- Production security review, access control model, logging policy, and retention policy
-- Provider legal/data-processing review and final privacy policy language
-- Future WebXR + Three.js immersive implementation, device testing, and voice/spatial privacy controls
+The repository and connected Supabase backend now include account authentication/data foundations, RLS, server-side AI and speech boundaries, trusted quotas, Stripe Identity age assurance, Checkout/customer-portal endpoints, signed subscription webhooks, and account deletion. The deployed Edge Function entrypoints have been checked against the candidate branch.
+
+Still required before public launch:
+- production frontend origin/provider secrets and an exact candidate deployment
+- a consented live Stripe Identity 18+ verification
+- two disposable accounts for live cross-account isolation and deletion verification
+- owner-selected monthly/annual prices, live Stripe product/prices, portal and webhook configuration
+- one real billing lifecycle test before enabling `BILLING_LIVE_ENABLED`
+- Android/iPad/accessibility smoke testing
+- provider legal/data-processing and final privacy/terms review
+- future WebXR + Three.js immersive implementation and voice/spatial privacy controls
 
 ## Billing foundation notes
 
@@ -62,13 +65,9 @@ Current implementation is intentionally safe:
 - App does **not** fake successful payments.
 - Paid plans remain informational and cannot be selected for higher local limits until a server-verified subscription exists.
 
-### Required production billing pieces
+### Production billing status
 
-1. Server endpoint to create checkout session
-2. Stripe webhook endpoint with signature verification
-3. Subscription state persistence (active/past_due/canceled/trialing)
-4. Entitlement enforcement on trusted server boundary
-5. Customer portal / cancellation flow
+The server endpoint, signed webhook handling, trusted subscription persistence, entitlement checks, and customer-portal flow are implemented. Live Stripe objects and secrets are intentionally not committed. Payments remain fail-closed until live recurring prices, portal/webhook configuration and the billing lifecycle test are complete.
 
 ## VR preview limitation and future architecture boundary
 
