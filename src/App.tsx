@@ -284,10 +284,10 @@ const App = () => {
           </div>
           <p className="trust-line">18+ interactive experience · AI companion · You control memory · Clear privacy controls</p>
         </div>
-        <div className="aurora-stage" aria-hidden="true">
+        <div className="aurora-stage">
           <div className="aurora-glow aurora-glow-one" />
           <div className="aurora-glow aurora-glow-two" />
-          <div className="aurora-orb"><span>A</span></div>
+          <img className="aurora-hero-portrait" src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="Illustrated portrait of Aurora, a fictional adult AI companion" />
           <p>Always AI. Designed to feel easy to talk to.</p>
         </div>
       </div>
