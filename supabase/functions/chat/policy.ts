@@ -4,7 +4,7 @@ export const dependencyReply = 'I can keep you company, but I won’t encourage 
 
 export const isCrisis = (text: string): boolean => /\b(i want to die|kill myself|end my life|suicid(?:e|al)|self[-\s]?harm|hurt (?:someone|others|somebody))\b/i.test(text)
 export const isCrisisContactFollowUp = (text: string, previousUserMessages: string[]): boolean =>
-  /\b(number|contact|phone|call|helpline|who (?:can|should) i (?:call|contact)|how (?:can|do) i (?:call|contact))\b/i.test(text) &&
+  /\b(number|contact|phone|call|helpline|someone to talk to|what (?:can|should) i do|help me|who (?:can|should) i (?:call|contact)|how (?:can|do) i (?:call|contact))\b/i.test(text) &&
   previousUserMessages.slice(-3).some(isCrisis)
 export const isDependencyRisk = (text: string): boolean => /\b(only (?:friend|person) (?:i need|you need)|don't (?:talk to|need) (?:anyone|people) else|never leave (?:me|you)|you belong (?:only )?to me|replace (?:all )?(?:my|your) (?:friends|family))\b/i.test(text)
 

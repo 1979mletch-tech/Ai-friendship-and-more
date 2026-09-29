@@ -14,6 +14,7 @@ describe('server chat policy', () => {
   })
   it('retains contact guidance at the server boundary after a crisis turn', () => {
     expect(isCrisisContactFollowUp('Please give me contact details', ['I am suicidal'])).toBe(true)
+    expect(isCrisisContactFollowUp('I need someone to talk to', ['I am suicidal'])).toBe(true)
     expect(crisisContactReply).toMatch(/999 or 112.*111.*116 123/)
     expect(isCrisisContactFollowUp('Call me later', ['Help with my project'])).toBe(false)
   })

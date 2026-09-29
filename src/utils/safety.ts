@@ -32,7 +32,7 @@ export const isPromptInjectionText = (text: string): boolean => promptInjectionP
 type PreviousMessage = { role: 'user' | 'assistant'; text: string }
 
 export const isCrisisContactFollowUp = (text: string, previous: PreviousMessage[]): boolean =>
-  /\b(number|contact|phone|call|helpline|who (?:can|should) i (?:call|contact)|how (?:can|do) i (?:call|contact))\b/i.test(text) &&
+  /\b(number|contact|phone|call|helpline|someone to talk to|what (?:can|should) i do|help me|who (?:can|should) i (?:call|contact)|how (?:can|do) i (?:call|contact))\b/i.test(text) &&
   previous.slice(-6).some((message) => message.role === 'user' && isCrisisText(message.text))
 
 export const getAssistantResponse = (text: string, mode: 'general' | 'creative', previous: PreviousMessage[] = []): string | null => {
