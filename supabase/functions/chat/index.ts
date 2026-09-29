@@ -2,7 +2,7 @@
 // Secrets: OPENAI_API_KEY, OPENAI_MODEL. Never expose these in VITE_* variables.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { crisisReply, dependencyReply, isCrisis, isDependencyRisk, screenReply } from './policy.ts'
+import { crisisContactReply, crisisReply, dependencyReply, isCrisis, isCrisisContactFollowUp, isDependencyRisk, screenReply } from './policy.ts'
 
 const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') || ''
 const cors = {
@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
   if (!messages.length || messages[messages.length - 1].role !== 'user') return json({ error: 'A user message is required last' }, 400)
 
   const latest = [...messages].reverse().find((m: any) => m.role === 'user')?.content || ''
+  const previousUserMessages = messages.slice(0, -1).filter((m: any) => m.role === 'user').map((m: any) => m.content)
+  if (isCrisisContactFollowUp(latest, previousUserMessages)) return json({ reply: crisisContactReply, safetyFlag: true })
   if (isCrisis(latest)) return json({ reply: crisisReply, safetyFlag: true })
   if (isDependencyRisk(latest)) return json({ reply: dependencyReply, safetyFlag: true })
 

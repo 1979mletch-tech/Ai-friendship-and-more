@@ -36,6 +36,7 @@ describe('safety helper', () => {
   it('keeps crisis contact details available on the next turn', () => {
     const previous = [{ role: 'user' as const, text: 'I am feeling suicidal' }]
     expect(isCrisisContactFollowUp('Can you help me with contact numbers?', previous)).toBe(true)
+    expect(isCrisisContactFollowUp('I need someone to talk to', previous)).toBe(true)
     expect(getAssistantResponse('Can you help me with contact numbers?', 'general', previous)).toMatch(/999 or 112.*111.*116 123/)
     expect(isCrisisContactFollowUp('What is your number?', [])).toBe(false)
   })
