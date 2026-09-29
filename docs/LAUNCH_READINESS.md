@@ -13,7 +13,7 @@ Run on the exact candidate commit:
 - `npm run build`
 - Download the Actions artifact named `ai-friendship-dist-<commit-sha>` and verify it contains `index.html` and the Vite assets.
 
-The preview workflow now runs for the candidate build branches and preserves that artifact even if the GitHub Pages environment blocks deployment.
+The preview workflow builds candidate and feature branches, preserving an artifact for each exact commit. Only `chatgpt/ai-friendship-build` deploys to GitHub Pages. Branch-specific concurrency prevents a feature-branch build from cancelling the launch-branch deployment.
 
 ## Owner-controlled release gate
 
@@ -21,13 +21,13 @@ These checks cannot be honestly completed by source inspection:
 
 1. Configure the HTTPS frontend origin in Supabase Auth redirect/site URLs.
 2. Apply all migrations in `supabase/migrations` to the intended staging project.
-3. Deploy the `chat` and `delete-account` Edge Functions.
+3. Deploy the `chat` and `delete-account` Edge Functions. Deploy `speak` for optional voice playback after its security and cost checks.
 4. Set server-only secrets: `OPENAI_API_KEY`, `OPENAI_MODEL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ALLOWED_ORIGIN`.
 5. Configure a real adult-eligibility/age-assurance provider. The browser 18+ control is only a preview control.
 6. Configure the existing Stripe checkout/webhook implementation with the owner's production Stripe account. Follow `docs/STRIPE_PRODUCTION_HANDOFF.md`; keep `BILLING_LIVE_ENABLED=false` until its live-mode verification passes. Do not put secret Stripe values in `VITE_*`.
 7. Run two disposable-account isolation tests against the deployed Supabase project.
 8. Test sign-up, email confirmation, sign-in, sign-out, password reset, expired session, deletion, live AI refusal without adult eligibility, rate limiting, and provider failure handling.
-9. Verify the exact deployed frontend commit on desktop and a real phone before public launch.
+9. Verify the exact deployed frontend commit on desktop and a real phone before public launch. Keep `VITE_AURORA_SPEECH_ENABLED=false` until the generated voice is auditioned on Android/iPad and the `speak` function is verified with adult and non-adult test sessions.
 
 ## Current release language
 

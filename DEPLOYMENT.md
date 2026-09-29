@@ -24,6 +24,7 @@ Deploy Edge Functions:
 - `verify-age`
 - `billing`
 - `stripe-webhook`
+- `speak` (optional; keep `VITE_AURORA_SPEECH_ENABLED=false` until it passes adult access, quota, cost and mobile playback checks)
 
 Server/Edge secrets:
 - `OPENAI_API_KEY`
