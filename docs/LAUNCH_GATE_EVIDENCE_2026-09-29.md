@@ -27,3 +27,16 @@ This record captures checks performed against the connected GitHub, Supabase, an
 The remaining gates require real provider values or human/consented interaction: choose monthly/annual subscription amounts; configure live Stripe prices/portal/webhook and Identity restricted DOB access; install production origin/provider secrets; run a consented adult Identity flow; run two disposable accounts through live isolation/chat/privacy/deletion; perform a real billing lifecycle; and complete Android/iPad/accessibility smoke testing.
 
 No source-build result is being used as a substitute for those live checks.
+
+
+## Batch 2 hardening evidence
+
+- Quality gate #397 passed on the previous evidence head and PR #7 was mergeable.
+- Thirteen user-ownership RLS policies were changed to explicit `TO authenticated` and `(select auth.uid())` ownership checks; the RLS init-plan performance warnings cleared.
+- Direct Data API table grants were reduced to least privilege: no anonymous table grants; authenticated CRUD only for conversations/memories/profiles and authenticated read-only for usage/billing state.
+- The internal age-verification-start ledger has no direct browser table grant.
+- All six user-owned/internal records reference `auth.users` with `ON DELETE CASCADE`.
+- The connected Supabase project currently has zero auth users, so live two-account isolation remains unclaimed.
+- Deployment drift was detected in the chat Edge Function (older wildcard-CORS fallback) and repaired.
+- After repair, all six deployed Edge Function entrypoints exactly match the candidate branch: chat, delete-account, verify-age, speak, billing, and stripe-webhook.
+- README production status was refreshed so implemented backend/billing foundations are no longer incorrectly listed as absent.
