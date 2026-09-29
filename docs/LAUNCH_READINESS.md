@@ -13,7 +13,7 @@ Run on the exact candidate commit:
 - `npm run build`
 - Download the Actions artifact named `ai-friendship-dist-<commit-sha>` and verify it contains `index.html` and the Vite assets.
 
-The preview workflow builds candidate and feature branches, preserving an artifact for each exact commit. Only `chatgpt/ai-friendship-build` deploys to GitHub Pages. Branch-specific concurrency prevents a feature-branch build from cancelling the launch-branch deployment.
+The preview workflow builds candidate and feature branches, preserving an artifact for each exact commit. Only `chatgpt/ai-friendship-build` deploys to GitHub Pages. The workflow stamps `build-commit.txt` into the artifact and polls the public Pages URL until it serves that exact SHA; a green deployment job includes this commit check. Branch-specific concurrency prevents a feature-branch build from cancelling the launch-branch deployment.
 
 ## Owner-controlled release gate
 
