@@ -35,6 +35,10 @@ Deno.serve(async (req) => {
   try { body = await req.json() } catch { return json({ error: 'Invalid request' }, 400) }
 
   if (body.action === 'start') {
+    const caller = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } })
+    const { data: reserved, error: limitError } = await caller.rpc('reserve_age_verification_start')
+    if (limitError) return json({ error: 'Age verification is temporarily unavailable' }, 503)
+    if (!reserved) return json({ error: 'Please wait before starting another age check' }, 429)
     const form = new URLSearchParams({
       type: 'document',
       client_reference_id: user.id,

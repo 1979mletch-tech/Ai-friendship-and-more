@@ -32,3 +32,12 @@ These checks cannot be honestly completed by source inspection:
 ## Current release language
 
 Until the owner-controlled checks above pass, describe the app as a browser preview / production candidate. Do not describe it as live AI, paid, age-verified, or publicly launched.
+
+### Identity request limit
+
+Apply the `age_verification_start_limit` migration before deploying the updated
+`verify-age` function. Each authenticated account can begin at most one Stripe
+Identity session per 10 minutes and three per rolling 24 hours; attempts are
+reserved atomically before a Stripe API call. The table is RLS-protected and has
+no direct browser access. Test 429 for repeat starts, 401 without a session,
+and confirm that a verified account does not reserve a further attempt.
