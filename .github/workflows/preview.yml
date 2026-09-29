@@ -30,6 +30,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Stamp exact source commit in build
+        run: printf '%s\n' "$GITHUB_SHA" > dist/build-commit.txt
       - name: Preserve verified build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -55,3 +57,19 @@ jobs:
       - name: Deploy preview
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify public Pages commit
+        env:
+          DEPLOY_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          url="${DEPLOY_URL%/}/build-commit.txt?commit=${GITHUB_SHA}"
+          for attempt in {1..12}; do
+            served="$(curl --max-time 10 --silent --show-error --fail "$url" 2>/dev/null || true)"
+            if [[ "$served" == "$GITHUB_SHA" ]]; then
+              echo "Public Pages serves commit $GITHUB_SHA"
+              exit 0
+            fi
+            echo "Waiting for Pages commit (attempt $attempt/12)"
+            sleep 5
+          done
+          echo "Public Pages did not serve expected commit $GITHUB_SHA" >&2
+          exit 1
