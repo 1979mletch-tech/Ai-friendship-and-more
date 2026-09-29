@@ -3,7 +3,7 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
+import { disclosureText, getAssistantResponse, isCrisisContactFollowUp, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { hasCloudAuth } from './config/cloud'
 import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
@@ -50,6 +50,11 @@ const STORAGE_KEYS = {
   adultAccess: 'ai_aurora_adult_access',
 }
 
+const readCompanionName = (session: AuthSession | null): string => {
+  const saved = safeLocalStorageGet<string>(localAccountKey(STORAGE_KEYS.companionName, session), 'Aurora')
+  return typeof saved === 'string' && saved.trim() && saved !== 'Friend' ? saved : 'Aurora'
+}
+
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
   if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/account' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
@@ -91,7 +96,7 @@ const App = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, session), []),
   )
-  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Friend'))
+  const [companionName, setCompanionName] = useState<string>(() => readCompanionName(session))
   const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
   const [memoryDraft, setMemoryDraft] = useState('')
   const [historyQuery, setHistoryQuery] = useState('')
@@ -173,14 +178,20 @@ const App = () => {
     const generation = chatGate.current.begin()
     if (generation === null) return
 
-    let response = getAssistantResponse(userText, chatMode)
+    let response = getAssistantResponse(userText, chatMode, messages)
+    const safetyResponse = isCrisisTextForClient(userText) || isCrisisContactFollowUp(userText, messages)
+    if (!session && response === null) {
+      chatGate.current.finish(generation)
+      setChatStatus('This browser preview has only scripted examples and cannot answer that message. Live chat needs server setup and adult verification.')
+      return
+    }
     const localDayKey = getLocalDayKey(new Date())
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(), role: 'user', text: userText,
       createdAt: new Date().toISOString(), dayKey: localDayKey,
     }
 
-    if (session && !isCrisisTextForClient(userText)) {
+    if (session && !safetyResponse) {
       setIsSending(true)
       setChatStatus('AI is responding…')
       try {
@@ -205,6 +216,8 @@ const App = () => {
     if (!chatGate.current.isCurrent(generation)) return
     chatGate.current.finish(generation)
 
+    if (response === null) return
+    setChatStatus('')
     setMessages((current) => [
       ...current,
       userMessage,
@@ -249,7 +262,7 @@ const App = () => {
     setCloudMemories(null)
     setTrustedPlan('free')
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
-    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
+    setCompanionName(readCompanionName(next))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
     setProjectNotes(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, next), []))
     setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
