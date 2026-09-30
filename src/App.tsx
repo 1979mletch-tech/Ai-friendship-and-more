@@ -174,7 +174,7 @@ const App = () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     if (publicLiveMode && !session) { setChatStatus('Sign in and complete adult verification to use live chat.'); return }
     const userText = input.trim().slice(0, 2000)
-    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages)) return
+    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages, messages)) return
     const generation = chatGate.current.begin()
     if (generation === null) return
 
@@ -410,7 +410,7 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
+          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages, messages)}
         >
           Send
         </button>
