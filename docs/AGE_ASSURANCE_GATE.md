@@ -1,0 +1,3 @@
+# Age Assurance Gate
+
+Launch requirement: establish adult eligibility before interactive companion access. A limited account may be created to bind an Identity check, but interactive live chat stays server-blocked until the signed-in user's trusted `app_metadata.adult_verified` has been set after a verified live document check and a confirmed age of at least 18. Minimise personal data: Stripe handles the documents and DOB; the app records only the boolean. Review consent, retention and alternatives for people unable to complete document verification. The current in-app 18+ confirmation is a preview control, not evidence of production-grade age assurance.

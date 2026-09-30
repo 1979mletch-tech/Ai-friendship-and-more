@@ -1,0 +1,95 @@
+name: AI Friendship preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/ai-friendship-build
+      - 'codex/**'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ai-friendship-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build preview with public cloud settings when configured
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_CHAT_API_URL: ${{ vars.VITE_CHAT_API_URL }}
+          VITE_PUBLIC_LIVE_MODE: 'false'
+          VITE_AGE_VERIFICATION_ENABLED: 'false'
+          VITE_AURORA_SPEECH_ENABLED: 'false'
+          VITE_BILLING_PROVIDER: 'none'
+        run: |
+          # These three values are public browser settings, never server secrets.
+          # Reject partial or misdirected configuration before publishing a build.
+          if [[ -n "$VITE_SUPABASE_URL$VITE_SUPABASE_ANON_KEY$VITE_CHAT_API_URL" ]]; then
+            if [[ "$VITE_SUPABASE_URL" != 'https://smsewzcyrqxiamqepffz.supabase.co' ||
+                  "$VITE_CHAT_API_URL" != 'https://smsewzcyrqxiamqepffz.supabase.co/functions/v1/chat' ||
+                  "$VITE_SUPABASE_ANON_KEY" != sb_publishable_* ]]; then
+              echo 'Incomplete or invalid public cloud preview configuration.' >&2
+              exit 1
+            fi
+          fi
+          npm run build
+      - name: Stamp exact source commit in build
+        run: printf '%s\n' "$GITHUB_SHA" > dist/build-commit.txt
+      - name: Preserve verified build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-friendship-dist-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.ref == 'refs/heads/chatgpt/ai-friendship-build'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy preview
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify public Pages commit
+        env:
+          DEPLOY_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          url="${DEPLOY_URL%/}/build-commit.txt?commit=${GITHUB_SHA}"
+          for attempt in {1..12}; do
+            served="$(curl --max-time 10 --silent --show-error --fail "$url" 2>/dev/null || true)"
+            if [[ "$served" == "$GITHUB_SHA" ]]; then
+              echo "Public Pages serves commit $GITHUB_SHA"
+              exit 0
+            fi
+            echo "Waiting for Pages commit (attempt $attempt/12)"
+            sleep 5
+          done
+          echo "Public Pages did not serve expected commit $GITHUB_SHA" >&2
+          exit 1
