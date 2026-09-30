@@ -54,7 +54,7 @@ export const saveProfile = async (session: AuthSession, profile: Pick<CloudProfi
   const response = await ensureOk(await fetch(endpoint('profiles', '?on_conflict=user_id'), {
     method: 'POST',
     headers: { ...headers(active), Prefer: 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify({ user_id: active.user.id, companion_name: profile.companion_name.trim().slice(0, 32) || 'Friend', tone: profile.tone, interests: profile.interests.trim().slice(0, 500), memory_enabled: profile.memory_enabled, updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ user_id: active.user.id, companion_name: profile.companion_name.trim().slice(0, 32) || 'Aurora', tone: profile.tone, interests: profile.interests.trim().slice(0, 500), memory_enabled: profile.memory_enabled, updated_at: new Date().toISOString() }),
   }))
   const rows = (await response.json()) as CloudProfile[]
   return rows[0] || null
