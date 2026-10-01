@@ -1,3 +1,4 @@
+import { sanitizeOwnerProjects, type OwnerProject } from '../utils/ownerWorkspace'
 import { readCloudConfig } from '../config/cloud'
 import { ensureFreshSession, type AuthSession } from './authService'
 
@@ -53,13 +54,15 @@ export const sendOwnerAuroraChat = async (
   session: AuthSession,
   messages: OwnerMessage[],
   notes: string[],
+  projects: OwnerProject[] = [],
 ): Promise<string> => {
   const boundedMessages = messages.slice(-16).map((item) => ({
     role: item.role,
     text: item.text.trim().slice(0, 1800),
   })).filter((item) => item.text)
   const boundedNotes = [...new Set(notes.map((item) => item.trim().slice(0, 280)).filter(Boolean))].slice(-12)
-  const result = await request(session, { action: 'chat', messages: boundedMessages, notes: boundedNotes })
+  const boundedProjects = sanitizeOwnerProjects(projects).map(({ id, name, status, summary }) => ({ id, name, status, summary }))
+  const result = await request(session, { action: 'chat', messages: boundedMessages, notes: boundedNotes, projects: boundedProjects })
   if (typeof result?.reply !== 'string' || !result.reply.trim()) throw new Error('Owner Aurora returned an invalid response.')
   return result.reply.trim()
 }
