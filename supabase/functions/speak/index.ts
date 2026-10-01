@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
         model: 'gpt-4o-mini-tts',
         voice: 'marin',
         input: text.trim(),
-        instructions: 'Speak as Aurora in a calm, soft, distinctly feminine and naturally warm conversational voice. Sound gentle, reassuring and emotionally present, with a slightly dreamy quality that suits a serene AI companion. Use a relaxed unhurried pace, smooth fluid intonation, clear articulation and subtle warmth. Keep the delivery intimate without whispering, breathiness or exaggerated sensuality. Use neutral natural English with no forced regional accent. Avoid theatrical emphasis, chirpy enthusiasm, harshness, monotone cadence or anything robotic. Let short pauses feel natural and make every line sound kind, composed and easy to listen to.',
+        instructions: 'Speak as Aurora in English with a gentle, subtle Polish accent. Use a calm, soft, distinctly feminine and naturally warm conversational voice. Sound reassuring and emotionally present, with a serene slightly dreamy quality. Keep the pace relaxed and unhurried, with smooth fluid intonation, clear articulation, natural short pauses and gentle warmth. Keep the Polish accent light and consistent rather than exaggerated. Be intimate without whispering, breathiness or exaggerated sensuality. Avoid theatrical emphasis, chirpy enthusiasm, harshness, monotone cadence or anything robotic. Every line should sound kind, composed, comforting and easy to listen to.',
         response_format: 'mp3',
       }),
       signal: AbortSignal.timeout(25_000),
