@@ -3,14 +3,11 @@ import { AuroraFigure } from './AuroraFigure'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
 import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '../services/ownerAuroraService'
 import { loadSession, type AuthSession } from '../services/authService'
-import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
+import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
+import { downloadJson } from '../utils/exportData'
+import { createOwnerWorkspaceExport, sanitizeOwnerMessages, sanitizeOwnerNotes, type StoredOwnerMessage } from '../utils/ownerWorkspace'
 
-type OwnerMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  createdAt: string
-}
+type OwnerMessage = StoredOwnerMessage
 
 const ownerKey = (name: string, session: AuthSession) => `ai_owner_aurora_${name}:account:${session.user.id}`
 const quickPrompts = [
@@ -82,18 +79,18 @@ export function OwnerAurora() {
     setReadiness(null)
     setOpen(false)
     if (!session) return () => { active = false }
-    setMessages(safeLocalStorageGet(ownerKey('messages', session), []))
-    setNotes(safeLocalStorageGet(ownerKey('notes', session), []))
+    setMessages(sanitizeOwnerMessages(safeLocalStorageGet(ownerKey('messages', session), [])))
+    setNotes(sanitizeOwnerNotes(safeLocalStorageGet(ownerKey('notes', session), [])))
     void refreshOwnerStatus(session, active)
     return () => { active = false }
   }, [session?.user.id])
 
   useEffect(() => {
-    if (session && allowed) safeLocalStorageSet(ownerKey('messages', session), messages.slice(-60))
+    if (session && allowed) safeLocalStorageSet(ownerKey('messages', session), sanitizeOwnerMessages(messages))
   }, [messages, session, allowed])
 
   useEffect(() => {
-    if (session && allowed) safeLocalStorageSet(ownerKey('notes', session), notes.slice(-30))
+    if (session && allowed) safeLocalStorageSet(ownerKey('notes', session), sanitizeOwnerNotes(notes))
   }, [notes, session, allowed])
 
   const send = async (seed?: string) => {
@@ -144,8 +141,19 @@ export function OwnerAurora() {
   const addNote = () => {
     const value = noteDraft.trim().slice(0, 280)
     if (!value || notes.includes(value)) return
-    setNotes((current) => [...current, value].slice(-30))
+    setNotes((current) => sanitizeOwnerNotes([...current, value]))
     setNoteDraft('')
+  }
+
+  const clearWorkspace = () => {
+    if (!session || !window.confirm('Clear your private Owner Aurora chat and notes from this browser?')) return
+    audioRef.current?.pause()
+    safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session))
+    setMessages([])
+    setNotes([])
+    setInput('')
+    setNoteDraft('')
+    setStatus('Private Owner Aurora browser data cleared.')
   }
 
   if (!session || checking || !allowed) return null
@@ -212,6 +220,11 @@ export function OwnerAurora() {
               <li key={note}><span>{note}</span><button type="button" onClick={() => setNotes((current) => current.filter((item) => item !== note))}>Remove</button></li>
             ))}</ul>}
           </details>
+
+          <div className="owner-data-actions">
+            <button type="button" onClick={() => downloadJson('owner-aurora-workspace.json', createOwnerWorkspaceExport(messages, notes))}>Export my owner workspace</button>
+            <button type="button" onClick={clearWorkspace}>Clear private workspace</button>
+          </div>
 
           {status && <p className="owner-aurora-status" role="status">{status}</p>}
         </div>
