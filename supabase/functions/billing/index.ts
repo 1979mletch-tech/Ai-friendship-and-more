@@ -22,6 +22,11 @@ const trustedStripeBillingUrl = (value: unknown) => {
     return false
   }
 }
+const markedReturnUrl = (base: string, marker: string) => {
+  const url = new URL(base)
+  url.searchParams.set('return', marker)
+  return url.toString()
+}
 
 Deno.serve(async (req) => {
   if (!origin || req.headers.get('Origin') !== origin) return json({ error: 'Origin not allowed' }, 403)
@@ -63,7 +68,7 @@ Deno.serve(async (req) => {
   if (body.action === 'portal') {
     path = 'billing_portal/sessions'
     form.set('customer', liveCurrent!.stripe_customer_id)
-    form.set('return_url', returnUrl)
+    form.set('return_url', markedReturnUrl(returnUrl, 'billing-portal'))
   } else {
     const price = body.plan ? prices[body.plan] : ''
     if (!price) return json({ error: 'Choose a valid plan' }, 400)
@@ -76,8 +81,8 @@ Deno.serve(async (req) => {
     form.set('subscription_data[metadata][plan]', body.plan || '')
     if (liveCurrent?.stripe_customer_id) form.set('customer', liveCurrent.stripe_customer_id)
     else if (user.email) form.set('customer_email', user.email)
-    form.set('success_url', returnUrl)
-    form.set('cancel_url', returnUrl)
+    form.set('success_url', markedReturnUrl(returnUrl, 'billing-success'))
+    form.set('cancel_url', markedReturnUrl(returnUrl, 'billing-cancel'))
   }
 
   const response = await fetch(`https://api.stripe.com/v1/${path}`, {

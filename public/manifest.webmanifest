@@ -1,0 +1,19 @@
+{
+  "name": "AI Aurora",
+  "short_name": "Aurora",
+  "description": "AI Aurora companion for conversation, creativity and thinking out loud.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090817",
+  "theme_color": "#090817",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "aurora-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
