@@ -90,6 +90,7 @@ export function AuroraPresence({
   const [autoFollow, setAutoFollow] = useState(true)
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
+  const [speechPulse, setSpeechPulse] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
   const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
   const [gaze, setGaze] = useState<'center' | 'left' | 'right'>('center')
@@ -107,6 +108,7 @@ export function AuroraPresence({
     animationFrameRef.current = null
     analyserRef.current = null
     setVoiceEnergy(0)
+    setSpeechPulse(0)
   }
 
   const startVoiceMeter = (audio: HTMLAudioElement) => {
@@ -125,7 +127,9 @@ export function AuroraPresence({
       const tick = () => {
         analyser.getByteFrequencyData(samples)
         const average = samples.reduce((sum, sample) => sum + sample, 0) / Math.max(1, samples.length)
-        setVoiceEnergy(Math.min(1, average / 110))
+        const energy = Math.min(1, average / 110)
+        setVoiceEnergy(energy)
+        setSpeechPulse((current) => current * 0.72 + energy * 0.28)
         animationFrameRef.current = requestAnimationFrame(tick)
       }
       tick()
@@ -286,7 +290,7 @@ export function AuroraPresence({
       data-reaction={reaction}
       data-engagement={engagement}
       data-gaze={gaze}
-      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
+      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3), '--aurora-speech-pulse': speechPulse.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
         <div className="aurora-sky" aria-hidden="true" />
