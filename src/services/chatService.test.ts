@@ -20,7 +20,7 @@ describe('chat service', () => {
     await expect(sendCloudChat(session, [], 'general', 'Friend')).rejects.toThrow(/not configured/i)
   })
 
-  it('sends bearer auth and bounded message content', async () => {
+  it('sends bearer auth, bounded messages and approved context', async () => {
     vi.stubEnv('VITE_CHAT_API_URL', 'https://example.test/chat')
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ reply: 'hello', mode: 'live' }), { status: 200 }),
@@ -30,6 +30,8 @@ describe('chat service', () => {
       [{ role: 'user', text: 'x'.repeat(3000) }],
       'creative',
       'Nova',
+      ['likes long walks', 'likes long walks'],
+      [{ project: 'Novel', tags: 'draft', note: 'Chapter one is underway.' }],
     )
     expect(result.reply).toBe('hello')
     const call = fetchMock.mock.calls[0]
@@ -39,6 +41,8 @@ describe('chat service', () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     const body = JSON.parse(String(init?.body))
     expect(body.messages[0].text).toHaveLength(2000)
+    expect(body.memory).toEqual(['likes long walks'])
+    expect(body.projectNotes).toEqual([{ project: 'Novel', tags: 'draft', note: 'Chapter one is underway.' }])
   })
 
   it('rejects malformed server responses', async () => {
@@ -46,6 +50,7 @@ describe('chat service', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
     await expect(sendCloudChat(session, [], 'general', 'Friend')).rejects.toThrow(/invalid response/i)
   })
+
   it('refreshes an expiring session before sending private messages', async () => {
     vi.stubEnv('VITE_CHAT_API_URL', 'https://example.test/chat')
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
@@ -59,5 +64,4 @@ describe('chat service', () => {
     expect((fetchMock.mock.calls[1][1]?.headers as Record<string, string>).Authorization).toBe('Bearer new-token')
     expect((fetchMock.mock.calls[1][1]?.headers as Record<string, string>).apikey).toBe('public-anon-key')
   })
-
 })
