@@ -18,7 +18,7 @@ export const isTrustedBillingUrl = (value: unknown): value is string => {
   if (typeof value !== 'string') return false
   try {
     const url = new URL(value)
-    return url.protocol === 'https:' && TRUSTED_BILLING_HOSTS.has(url.hostname.toLowerCase())
+    return url.protocol === 'https:' && !url.username && !url.password && TRUSTED_BILLING_HOSTS.has(url.hostname.toLowerCase())
   } catch {
     return false
   }
