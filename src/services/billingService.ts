@@ -2,6 +2,18 @@ import { readCloudConfig } from '../config/cloud'
 import { ensureFreshSession, type AuthSession } from './authService'
 import type { PlanId } from '../types/subscription'
 
+const TRUSTED_BILLING_HOSTS = new Set(['checkout.stripe.com', 'billing.stripe.com'])
+
+export const isTrustedBillingUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && TRUSTED_BILLING_HOSTS.has(url.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 const request = async (session: AuthSession, action: string, plan?: PlanId) => {
   const config = readCloudConfig()
   if (!config.supabaseUrl || !config.supabaseAnonKey) throw new Error('Account service is not configured.')
@@ -23,6 +35,6 @@ export const getBillingPlan = async (session: AuthSession): Promise<PlanId> => {
 
 export const openBilling = async (session: AuthSession, action: 'checkout' | 'portal', plan?: PlanId) => {
   const result = await request(session, action, plan)
-  if (typeof result.url !== 'string' || !result.url.startsWith('https://')) throw new Error('Invalid billing link.')
+  if (!isTrustedBillingUrl(result.url)) throw new Error('Invalid billing link.')
   window.location.assign(result.url)
 }

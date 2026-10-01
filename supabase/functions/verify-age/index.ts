@@ -10,6 +10,15 @@ const headers = {
   'Content-Type': 'application/json',
 }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers })
+const trustedStripeIdentityUrl = (value: unknown) => {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname === 'verify.stripe.com'
+  } catch {
+    return false
+  }
+}
 
 Deno.serve(async (req) => {
   if (!allowedOrigin || req.headers.get('Origin') !== allowedOrigin) return json({ error: 'Origin not allowed' }, 403)
@@ -35,6 +44,10 @@ Deno.serve(async (req) => {
   try { body = await req.json() } catch { return json({ error: 'Invalid request' }, 400) }
 
   if (body.action === 'start') {
+    const caller = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } })
+    const { data: reserved, error: limitError } = await caller.rpc('reserve_age_verification_start')
+    if (limitError) return json({ error: 'Age verification is temporarily unavailable' }, 503)
+    if (!reserved) return json({ error: 'Please wait before starting another age check' }, 429)
     const form = new URLSearchParams({
       type: 'document',
       client_reference_id: user.id,
@@ -46,7 +59,7 @@ Deno.serve(async (req) => {
     }).catch(() => null)
     if (!response?.ok) return json({ error: 'Could not start age verification' }, 502)
     const result = await response.json()
-    if (typeof result.id !== 'string' || typeof result.url !== 'string' || !result.url.startsWith('https://')) {
+    if (typeof result.id !== 'string' || !/^vs_[a-zA-Z0-9]+$/.test(result.id) || !trustedStripeIdentityUrl(result.url)) {
       return json({ error: 'Invalid verification response' }, 502)
     }
     return json({ sessionId: result.id, url: result.url })
@@ -61,18 +74,18 @@ Deno.serve(async (req) => {
     const result = await response.json()
     if (result.client_reference_id !== user.id) return json({ error: 'Verification does not belong to this account' }, 403)
     if (result.status !== 'verified') return json({ verified: false, status: result.status })
-    // A Stripe test session is useful for QA but must never unlock live AI.
     if (result.livemode !== true || !stripeKey.startsWith('sk_live_')) {
       return json({ verified: false, status: 'test-mode' })
     }
-    // The ordinary secret key cannot read DOB. A separately scoped restricted
-    // key must retrieve it for the 18+ decision. Never store or return DOB.
-    const details = await fetch(`https://api.stripe.com/v1/identity/verification_sessions/${body.sessionId}?expand%5B%5D=verified_outputs`, {
+    const details = await fetch(`https://api.stripe.com/v1/identity/verification_sessions/${body.sessionId}?expand%5B%5D=verified_outputs.dob`, {
       headers: { Authorization: `Bearer ${dobKey}` },
     }).catch(() => null)
     if (!details?.ok) return json({ error: 'Could not confirm age' }, 503)
     const verifiedSession = await details.json()
-    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified') return json({ error: 'Verification changed' }, 409)
+    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified' ||
+        verifiedSession.client_reference_id !== user.id || verifiedSession.livemode !== true) {
+      return json({ error: 'Verification changed' }, 409)
+    }
     if (!isAdultDob(verifiedSession.verified_outputs?.dob)) return json({ verified: false, status: 'not-eligible' })
     const admin = createClient(url, serviceKey)
     const updated = await admin.auth.admin.updateUserById(user.id, {
