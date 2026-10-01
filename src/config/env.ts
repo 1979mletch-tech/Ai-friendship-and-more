@@ -1,6 +1,7 @@
 export type BillingEnv = {
   provider: 'none' | 'stripe'
-  stripePublicKey: string
+  stripePriceDaily: string
+  stripePriceWeekly: string
   stripePriceMonthly: string
   stripePriceAnnual: string
 }
@@ -11,7 +12,8 @@ export const readBillingEnv = (source: Record<string, string | undefined> = impo
 
   return {
     provider,
-    stripePublicKey: source.VITE_STRIPE_PUBLIC_KEY || '',
+    stripePriceDaily: source.VITE_STRIPE_PRICE_PRO_DAILY || '',
+    stripePriceWeekly: source.VITE_STRIPE_PRICE_PRO_WEEKLY || '',
     stripePriceMonthly: source.VITE_STRIPE_PRICE_PRO_MONTHLY || '',
     stripePriceAnnual: source.VITE_STRIPE_PRICE_PRO_ANNUAL || '',
   }
