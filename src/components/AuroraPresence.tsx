@@ -54,8 +54,9 @@ export function AuroraPresence({
   const [voiceStatus, setVoiceStatus] = useState('')
   const [scene, setScene] = useState<AuroraScene>('together')
   const [voiceEnergy, setVoiceEnergy] = useState(0)
+  const [externalAiBusy, setExternalAiBusy] = useState(false)
   const available = speechAvailable() && Boolean(session)
-  const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || loading ? 'thinking' : scene
+  const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
   const recognitionType = typeof window !== 'undefined'
     ? (window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }).SpeechRecognition
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
@@ -103,6 +104,12 @@ export function AuroraPresence({
     setSpeaking(false)
     setLoading(false)
   }
+
+  useEffect(() => {
+    const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
+    window.addEventListener('aurora-ai-busy', handleAiBusy)
+    return () => window.removeEventListener('aurora-ai-busy', handleAiBusy)
+  }, [])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
