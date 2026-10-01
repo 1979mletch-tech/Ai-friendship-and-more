@@ -5,7 +5,7 @@ import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '
 import { loadSession, type AuthSession } from '../services/authService'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
 import { downloadJson } from '../utils/exportData'
-import { createOwnerWorkspaceExport, sanitizeOwnerMessages, sanitizeOwnerNotes, type StoredOwnerMessage } from '../utils/ownerWorkspace'
+import { createOwnerWorkspaceExport, defaultOwnerProjects, sanitizeOwnerMessages, sanitizeOwnerNotes, sanitizeOwnerProjects, type OwnerProject, type StoredOwnerMessage } from '../utils/ownerWorkspace'
 
 type OwnerMessage = StoredOwnerMessage
 
@@ -37,6 +37,7 @@ export function OwnerAurora() {
   const [messages, setMessages] = useState<OwnerMessage[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [noteDraft, setNoteDraft] = useState('')
+  const [projects, setProjects] = useState<OwnerProject[]>(defaultOwnerProjects)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const latestReply = useMemo(
@@ -81,6 +82,8 @@ export function OwnerAurora() {
     if (!session) return () => { active = false }
     setMessages(sanitizeOwnerMessages(safeLocalStorageGet(ownerKey('messages', session), [])))
     setNotes(sanitizeOwnerNotes(safeLocalStorageGet(ownerKey('notes', session), [])))
+    const savedProjects = sanitizeOwnerProjects(safeLocalStorageGet(ownerKey('projects', session), []))
+    setProjects(savedProjects.length ? savedProjects : defaultOwnerProjects())
     void refreshOwnerStatus(session, active)
     return () => { active = false }
   }, [session?.user.id])
@@ -92,6 +95,10 @@ export function OwnerAurora() {
   useEffect(() => {
     if (session && allowed) safeLocalStorageSet(ownerKey('notes', session), sanitizeOwnerNotes(notes))
   }, [notes, session, allowed])
+
+  useEffect(() => {
+    if (session && allowed) safeLocalStorageSet(ownerKey('projects', session), sanitizeOwnerProjects(projects))
+  }, [projects, session, allowed])
 
   const send = async (seed?: string) => {
     if (!session || !allowed || busy) return
@@ -108,6 +115,7 @@ export function OwnerAurora() {
         session,
         nextMessages.map(({ role, text: messageText }) => ({ role, text: messageText })),
         notes,
+        projects,
       )
       setMessages((current) => [...current, {
         id: crypto.randomUUID(), role: 'assistant', text: reply, createdAt: new Date().toISOString(),
@@ -143,12 +151,13 @@ export function OwnerAurora() {
     if (!value || notes.includes(value)) return
     setNotes((current) => sanitizeOwnerNotes([...current, value]))
     setNoteDraft('')
+    setProjects(defaultOwnerProjects())
   }
 
   const clearWorkspace = () => {
     if (!session || !window.confirm('Clear your private Owner Aurora chat and notes from this browser?')) return
     audioRef.current?.pause()
-    safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session))
+    safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session), ownerKey('projects', session))
     setMessages([])
     setNotes([])
     setInput('')
@@ -189,6 +198,18 @@ export function OwnerAurora() {
               </div>
             </section>
           )}
+
+
+          <section className="owner-projects" aria-label="Owner projects">
+            <div className="owner-readiness-head"><strong>Project control centre</strong><small>Verified boundaries</small></div>
+            {projects.map((project) => (
+              <article key={project.id} className="owner-project-card">
+                <div><strong>{project.name}</strong><span>{project.status}</span></div>
+                <p>{project.summary}</p>
+                <small>{project.id === 'ai-friendship' ? 'Current workspace · repository work verified in this project' : 'Next project · repository not connected or verified from this workspace'}</small>
+              </article>
+            ))}
+          </section>
 
           <div className="owner-aurora-prompts" aria-label="Owner Aurora quick prompts">
             {quickPrompts.map((prompt) => <button key={prompt} type="button" disabled={busy} onClick={() => void send(prompt)}>{prompt}</button>)}
