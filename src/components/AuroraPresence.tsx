@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
+import '../auroraMotion.css'
 
 const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. I'm here with you. What's on your mind today?"
 
