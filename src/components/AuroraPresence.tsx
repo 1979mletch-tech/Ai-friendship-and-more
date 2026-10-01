@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
 import { getAuroraDaypart, inferAuroraScene, type AuroraScene } from '../utils/auroraActivity'
+import { inferAuroraReaction, type AuroraReaction } from '../utils/auroraReaction'
 import { AuroraFigure } from './AuroraFigure'
 import '../auroraMotion.css'
 
@@ -28,6 +29,22 @@ const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
   relax: { label: 'Relax', status: 'Aurora is settling down with you.' },
   sleep: { label: 'Sleep', status: 'Aurora is in a quiet bedtime scene.' },
 }
+
+const reactionCopy: Record<AuroraReaction, string> = {
+  neutral: 'Present',
+  celebrate: 'Celebrating with you',
+  encourage: 'Encouraging you',
+  calm: 'Keeping things calm',
+  focus: 'Focused with you',
+}
+
+const momentStarters: Array<{ label: string; scene: AuroraScene; prompt: string }> = [
+  { label: 'Walk with me', scene: 'walk', prompt: "I'm going for a walk. Keep me company and chat with me while I go." },
+  { label: 'Stretch with me', scene: 'exercise', prompt: "Let's do a gentle stretch together. Keep me company and help me stay focused." },
+  { label: 'Wind down', scene: 'relax', prompt: "I'm winding down. Keep me company with a calm conversation." },
+  { label: 'Focus together', scene: 'together', prompt: 'Help me focus on one useful next step and stay with me while I work through it.' },
+  { label: 'Bedtime chat', scene: 'sleep', prompt: "I'm getting ready for bed. Keep me company while I wind down." },
+]
 
 const readPresenceSetting = <T,>(key: string, fallback: T): T => {
   try {
@@ -66,6 +83,7 @@ export function AuroraPresence({
   const [loading, setLoading] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState('')
   const [scene, setScene] = useState<AuroraScene>('together')
+  const [reaction, setReaction] = useState<AuroraReaction>('neutral')
   const [autoFollow, setAutoFollow] = useState(true)
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
@@ -155,7 +173,7 @@ export function AuroraPresence({
     setAutoFollow(saved.autoFollow !== false)
     setAutoSpeak(false)
     lastAutoSpokenRef.current = latestReply ?? ''
-  }, [presenceKey, latestReply])
+  }, [presenceKey])
 
   useEffect(() => {
     savePresenceSetting(presenceKey, { scene, autoFollow })
@@ -164,9 +182,10 @@ export function AuroraPresence({
   useEffect(() => {
     const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
     const handleUserMessage = (event: Event) => {
-      if (!autoFollow) return
       const text = (event as CustomEvent<string>).detail
       if (typeof text !== 'string') return
+      setReaction(inferAuroraReaction(text))
+      if (!autoFollow) return
       const nextScene = inferAuroraScene(text)
       if (nextScene) setScene(nextScene)
     }
@@ -177,6 +196,12 @@ export function AuroraPresence({
       window.removeEventListener('aurora-user-message', handleUserMessage)
     }
   }, [autoFollow])
+
+  useEffect(() => {
+    if (!latestReply) return
+    const nextReaction = inferAuroraReaction(latestReply)
+    if (nextReaction !== 'neutral') setReaction(nextReaction)
+  }, [latestReply])
 
   useEffect(() => {
     if (!autoSpeak || !available || !latestReply || latestReply === lastAutoSpokenRef.current) return
@@ -215,6 +240,7 @@ export function AuroraPresence({
       const transcript = event.results[0]?.[0]?.transcript?.trim()
       if (transcript) {
         onTranscript(transcript)
+        setReaction(inferAuroraReaction(transcript))
         setVoiceStatus('Voice draft added. Review it before sending.')
       }
     }
@@ -225,12 +251,19 @@ export function AuroraPresence({
     catch { setVoiceStatus('Microphone unavailable. You can type instead.') }
   }
 
+  const startSharedMoment = (nextScene: AuroraScene, prompt: string) => {
+    setScene(nextScene)
+    setReaction(nextScene === 'sleep' || nextScene === 'relax' ? 'calm' : nextScene === 'together' ? 'focus' : 'neutral')
+    onTranscript(prompt)
+  }
+
   return (
     <div
       className={`aurora-presence aurora-motion-${motionState} aurora-scene-${scene}`}
       data-motion-state={motionState}
       data-scene={scene}
       data-daypart={daypart}
+      data-reaction={reaction}
       style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
@@ -242,6 +275,7 @@ export function AuroraPresence({
         <div className="aurora-bed" aria-hidden="true"><span className="aurora-pillow" /><span className="aurora-blanket" /></div>
         <div className="aurora-character"><AuroraFigure /></div>
         <div className="aurora-world-status" aria-live="polite">{sceneCopy[scene].status}</div>
+        <div className="aurora-reaction-label" aria-hidden="true">{reactionCopy[reaction]}</div>
       </div>
 
       <div className="aurora-presence-copy">
@@ -249,6 +283,12 @@ export function AuroraPresence({
         <h2>A companion who can share the moment</h2>
         <p className="small">Aurora is a fictional AI character. Her scenes are animated illustrations, and her optional voice is AI generated. She can keep you company during everyday activities without pretending to be physically present.</p>
         <p className="small">Voice profile: calm, gentle feminine English with a subtle Polish-accented feel.</p>
+
+        <div className="aurora-moment-starters" role="group" aria-label="Shared moments with Aurora">
+          {momentStarters.map((item) => (
+            <button key={item.label} type="button" onClick={() => startSharedMoment(item.scene, item.prompt)}>{item.label}</button>
+          ))}
+        </div>
 
         <div className="aurora-activity-controls" role="group" aria-label="Aurora activity">
           {(Object.keys(sceneCopy) as AuroraScene[]).map((nextScene) => (
@@ -283,7 +323,7 @@ export function AuroraPresence({
           </button>
         </div>
 
-        <p className="small" aria-live="polite">Aurora motion: {motionState}. Scene: {sceneCopy[scene].label}. Ambience: {daypart}.</p>
+        <p className="small" aria-live="polite">Aurora motion: {motionState}. Scene: {sceneCopy[scene].label}. Reaction: {reactionCopy[reaction]}. Ambience: {daypart}.</p>
         <div className="voice-controls">
           <button type="button" onClick={toggleListening} disabled={!recognitionType} aria-pressed={listening}>
             {listening ? 'Stop listening' : 'Speak a message'}
