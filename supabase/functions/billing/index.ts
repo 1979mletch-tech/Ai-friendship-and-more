@@ -7,6 +7,12 @@ const cors = { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Head
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...cors, 'Content-Type': 'application/json' },
 })
+const prices: Record<string, string> = {
+  'pro-daily': 'price_1ULbdmCnBoiV72UUnsHlPKah',
+  'pro-weekly': 'price_1ULbdrCnBoiV72UUHpsvDIc9',
+  'pro-monthly': 'price_1ULbdyCnBoiV72UU8G420ftw',
+  'pro-annual': 'price_1ULbe3CnBoiV72UUBT3sGUEc',
+}
 const trustedStripeBillingUrl = (value: unknown) => {
   if (typeof value !== 'string') return false
   try {
@@ -33,15 +39,8 @@ Deno.serve(async (req) => {
 
   const secret = Deno.env.get('STRIPE_SECRET_KEY') || ''
   const webhook = Deno.env.get('STRIPE_WEBHOOK_SECRET') || ''
-  const daily = Deno.env.get('STRIPE_PRICE_DAILY') || ''
-  const weekly = Deno.env.get('STRIPE_PRICE_WEEKLY') || ''
-  const monthly = Deno.env.get('STRIPE_PRICE_MONTHLY') || ''
-  const annual = Deno.env.get('STRIPE_PRICE_ANNUAL') || ''
   const returnUrl = Deno.env.get('APP_RETURN_URL') || ''
-  if (!secret.startsWith('sk_live_') || !webhook ||
-      !daily.startsWith('price_') || !weekly.startsWith('price_') ||
-      !monthly.startsWith('price_') || !annual.startsWith('price_') ||
-      !returnUrl.startsWith(origin + '/')) {
+  if (!secret.startsWith('sk_live_') || !webhook || !returnUrl.startsWith(origin + '/')) {
     return json({ error: 'Payments are not configured' }, 503)
   }
 
@@ -66,12 +65,6 @@ Deno.serve(async (req) => {
     form.set('customer', liveCurrent!.stripe_customer_id)
     form.set('return_url', returnUrl)
   } else {
-    const prices: Record<string, string> = {
-      'pro-daily': daily,
-      'pro-weekly': weekly,
-      'pro-monthly': monthly,
-      'pro-annual': annual,
-    }
     const price = body.plan ? prices[body.plan] : ''
     if (!price) return json({ error: 'Choose a valid plan' }, 400)
     path = 'checkout/sessions'
