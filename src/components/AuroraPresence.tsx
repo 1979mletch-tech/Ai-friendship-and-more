@@ -92,6 +92,7 @@ export function AuroraPresence({
   const [voiceEnergy, setVoiceEnergy] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
   const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
+  const [gaze, setGaze] = useState<'center' | 'left' | 'right'>('center')
   const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
@@ -184,6 +185,19 @@ export function AuroraPresence({
   }, [presenceKey, scene, autoFollow])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    let timer = 0
+    const scheduleGaze = () => {
+      timer = window.setTimeout(() => {
+        setGaze((current) => current === 'center' ? (Date.now() % 2 ? 'left' : 'right') : 'center')
+        scheduleGaze()
+      }, 4200 + Math.floor(Math.random() * 3800))
+    }
+    scheduleGaze()
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
     const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
     const handleUserMessage = (event: Event) => {
       const text = (event as CustomEvent<string>).detail
@@ -271,6 +285,7 @@ export function AuroraPresence({
       data-daypart={daypart}
       data-reaction={reaction}
       data-engagement={engagement}
+      data-gaze={gaze}
       style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
