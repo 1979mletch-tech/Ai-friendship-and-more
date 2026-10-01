@@ -81,6 +81,8 @@ export function AuroraPresence({
   const urlRef = useRef<string | null>(null)
   const playbackId = useRef(0)
   const lastAutoSpokenRef = useRef('')
+  const engagementTimerRef = useRef<number | null>(null)
+  const reactionTimerRef = useRef<number | null>(null)
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -190,15 +192,34 @@ export function AuroraPresence({
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let timer = 0
+    let direction: 'left' | 'right' = 'left'
     const scheduleGaze = () => {
+      if (reducedMotion.matches) {
+        setGaze('center')
+        return
+      }
       timer = window.setTimeout(() => {
-        setGaze((current) => current === 'center' ? (Date.now() % 2 ? 'left' : 'right') : 'center')
+        setGaze((current) => {
+          if (current !== 'center') return 'center'
+          direction = direction === 'left' ? 'right' : 'left'
+          return direction
+        })
         scheduleGaze()
-      }, 4200 + Math.floor(Math.random() * 3800))
+      }, 4800 + Math.floor(Math.random() * 5200))
     }
+    const handleMotionPreference = () => {
+      window.clearTimeout(timer)
+      setGaze('center')
+      scheduleGaze()
+    }
+    reducedMotion.addEventListener?.('change', handleMotionPreference)
     scheduleGaze()
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      reducedMotion.removeEventListener?.('change', handleMotionPreference)
+    }
   }, [])
 
   useEffect(() => {
@@ -206,9 +227,13 @@ export function AuroraPresence({
     const handleUserMessage = (event: Event) => {
       const text = (event as CustomEvent<string>).detail
       if (typeof text !== 'string') return
-      setReaction(inferAuroraReaction(text))
+      const nextReaction = inferAuroraReaction(text)
+      setReaction(nextReaction)
       setEngagement('engaged')
-      window.setTimeout(() => setEngagement('idle'), 6500)
+      if (engagementTimerRef.current !== null) window.clearTimeout(engagementTimerRef.current)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
+      engagementTimerRef.current = window.setTimeout(() => setEngagement('idle'), 6500)
+      if (nextReaction !== 'neutral') reactionTimerRef.current = window.setTimeout(() => setReaction('neutral'), 9000)
       if (!autoFollow) return
       const nextScene = inferAuroraScene(text)
       if (nextScene) setScene(nextScene)
@@ -218,13 +243,19 @@ export function AuroraPresence({
     return () => {
       window.removeEventListener('aurora-ai-busy', handleAiBusy)
       window.removeEventListener('aurora-user-message', handleUserMessage)
+      if (engagementTimerRef.current !== null) window.clearTimeout(engagementTimerRef.current)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
     }
   }, [autoFollow])
 
   useEffect(() => {
     if (!latestReply) return
     const nextReaction = inferAuroraReaction(latestReply)
-    if (nextReaction !== 'neutral') setReaction(nextReaction)
+    if (nextReaction !== 'neutral') {
+      setReaction(nextReaction)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
+      reactionTimerRef.current = window.setTimeout(() => setReaction('neutral'), 9000)
+    }
   }, [latestReply])
 
   useEffect(() => {
