@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
 
-const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. What's on your mind today?"
+const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. I'm here with you. What's on your mind today?"
 
 type RecognitionResult = { results: ArrayLike<ArrayLike<{ transcript: string }>> }
 type Recognition = {
@@ -27,6 +27,7 @@ export function AuroraPresence({ latestReply, onTranscript, session }: { latestR
   const [loading, setLoading] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState('')
   const available = speechAvailable() && Boolean(session)
+  const motionState = speaking ? 'speaking' : listening ? 'listening' : loading ? 'thinking' : 'idle'
   const recognitionType = typeof window !== 'undefined'
     ? (window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }).SpeechRecognition
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
@@ -48,6 +49,7 @@ export function AuroraPresence({ latestReply, onTranscript, session }: { latestR
     audioRef.current?.pause()
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
   }, [])
+
   useEffect(() => () => {
     playbackId.current += 1
     audioRef.current?.pause()
@@ -102,13 +104,17 @@ export function AuroraPresence({ latestReply, onTranscript, session }: { latestR
   }
 
   return (
-    <div className="aurora-presence">
-      <img src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="Illustrated portrait of Aurora, a fictional adult AI companion" />
+    <div className={`aurora-presence aurora-motion-${motionState}`} data-motion-state={motionState}>
+      <div className="aurora-portrait-frame" aria-hidden="true">
+        <img src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="" />
+        <span className="aurora-motion-glow" />
+      </div>
       <div className="aurora-presence-copy">
         <p className="eyebrow">MEET AI AURORA</p>
         <h2>A familiar face while you talk</h2>
         <p className="small">Aurora is an illustrated AI character. Her optional voice is AI generated. Spoken text is sent to our speech provider only when you choose to play it. A microphone draft is never sent until you press Send.</p>
-        <p className="small">Voice preview: feminine English with a light Latin American Spanish accent.</p>
+        <p className="small">Voice profile: calm, gentle feminine English with a subtle Polish-accented feel.</p>
+        <p className="small" aria-live="polite">Aurora motion: {motionState}.</p>
         <div className="voice-controls">
           <button type="button" onClick={toggleListening} disabled={!recognitionType} aria-pressed={listening}>
             {listening ? 'Stop listening' : 'Speak a message'}
@@ -120,7 +126,7 @@ export function AuroraPresence({ latestReply, onTranscript, session }: { latestR
             {speaking || loading ? 'Stop voice' : 'Hear latest reply'}
           </button>
         </div>
-        {!available && <p className="small">Aurora’s voice preview will be available after sign-in, adult verification and speech service setup. Text chat remains available.</p>}
+        {!available && <p className="small">Aurora’s voice becomes available after sign-in, adult verification and speech service setup. Text chat remains available.</p>}
         {!recognitionType && <p className="small">Microphone input is unavailable in this browser. You can type instead.</p>}
         {voiceStatus && <p className="small" role="status">{voiceStatus}</p>}
       </div>
