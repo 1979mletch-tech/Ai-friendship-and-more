@@ -19,7 +19,7 @@ import { removeHistoryTurn } from './utils/history'
 import { sanitizeImportedMessages } from './utils/conversationImport'
 import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './utils/usage'
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
-import { getBillingPlan, openBilling } from './services/billingService'
+import { getBillingStatus, openBilling, type BillingStatus } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
@@ -85,6 +85,7 @@ const App = () => {
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
   const [trustedPlan, setTrustedPlan] = useState<PlanId>('free')
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
   const planId: PlanId = session ? trustedPlan : previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
@@ -160,7 +161,7 @@ const App = () => {
   useEffect(() => {
     let active = true
     if (session && billing.isConfigured) {
-      void getBillingPlan(session).then((plan) => { if (active) setTrustedPlan(plan) }).catch(() => undefined)
+      void getBillingStatus(session).then((status) => { if (active) { setBillingStatus(status); setTrustedPlan(status.plan) } }).catch(() => undefined)
     }
     return () => { active = false }
   }, [session, billing.isConfigured])
@@ -254,6 +255,7 @@ const App = () => {
     setCloudConversations(null)
     setCloudMemories(null)
     setTrustedPlan('free')
+    setBillingStatus(null)
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
     setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
@@ -663,6 +665,7 @@ const App = () => {
       <p>Start with 10 free AI messages, then choose the access period that suits you. Stripe shows the exact amount and renewal terms before payment.</p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
       {billing.isConfigured && <p className="small">Paid access starts only after Stripe confirms the subscription.</p>}
+      {session && billingStatus && <div className="usage-card" aria-live="polite"><strong>Subscription status</strong><span>{billingStatus.paid ? `Active: ${billingStatus.plan}` : 'Free plan'}{billingStatus.cancelAtPeriodEnd ? ` · Cancels at period end${billingStatus.currentPeriodEnd ? ` (${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()})` : ''}` : ''}</span></div>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
