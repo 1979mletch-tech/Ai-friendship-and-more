@@ -7,7 +7,7 @@ import { inferAuroraReaction, type AuroraReaction } from '../utils/auroraReactio
 import { AuroraFigure } from './AuroraFigure'
 import '../auroraMotion.css'
 
-const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. I'm here with you. What's on your mind today?"
+const VOICE_SAMPLE = "Hi, I'm Aurora. It's lovely to meet you. What shall we talk about?"
 
 type RecognitionResult = { results: ArrayLike<ArrayLike<{ transcript: string }>> }
 type Recognition = {
