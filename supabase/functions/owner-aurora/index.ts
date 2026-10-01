@@ -25,6 +25,19 @@ const withinOwnerRateLimit = (userId: string) => {
   return true
 }
 
+const readiness = () => {
+  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+  const returnUrl = Deno.env.get('APP_RETURN_URL') || ''
+  return {
+    ai: Boolean(Deno.env.get('OPENAI_API_KEY')),
+    speech: Boolean(Deno.env.get('OPENAI_API_KEY')),
+    billing: Deno.env.get('BILLING_LIVE_ENABLED') === 'true' && stripeKey.startsWith('sk_live_'),
+    webhook: Boolean(Deno.env.get('STRIPE_WEBHOOK_SECRET')),
+    ageVerification: Boolean(Deno.env.get('STRIPE_IDENTITY_DOB_KEY')) && Boolean(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) && stripeKey.startsWith('sk_live_'),
+    returnUrl: Boolean(origin) && returnUrl.startsWith(origin + '/'),
+  }
+}
+
 Deno.serve(async (req) => {
   if (!origin || req.headers.get('Origin') !== origin) return json({ error: 'Origin not allowed' }, 403)
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors })
@@ -47,7 +60,7 @@ Deno.serve(async (req) => {
 
   let body: any
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON' }, 400) }
-  if (body?.action === 'status') return json({ owner: true })
+  if (body?.action === 'status') return json({ owner: true, readiness: readiness() })
   if (body?.action !== 'chat') return json({ error: 'Unknown action' }, 400)
   if (!withinOwnerRateLimit(user.id)) return json({ error: 'Too many owner requests. Please wait a moment.' }, 429)
 
