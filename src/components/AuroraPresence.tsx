@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
 import '../auroraMotion.css'
@@ -175,7 +176,7 @@ export function AuroraPresence({
       className={`aurora-presence aurora-motion-${motionState} aurora-scene-${scene}`}
       data-motion-state={motionState}
       data-scene={scene}
-      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as React.CSSProperties}
+      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
         <div className="aurora-sky" aria-hidden="true" />
