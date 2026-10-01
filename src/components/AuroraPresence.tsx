@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
+import { getAuroraDaypart, inferAuroraScene, type AuroraScene } from '../utils/auroraActivity'
 import { AuroraFigure } from './AuroraFigure'
 import '../auroraMotion.css'
 
@@ -20,14 +21,25 @@ type Recognition = {
 }
 type RecognitionConstructor = new () => Recognition
 
-type AuroraScene = 'together' | 'walk' | 'exercise' | 'relax' | 'sleep'
-
 const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
   together: { label: 'Together', status: 'Aurora is here with you.' },
-  walk: { label: 'Walk', status: 'Aurora is walking alongside you.' },
-  exercise: { label: 'Exercise', status: 'Aurora is moving and stretching with you.' },
+  walk: { label: 'Walk', status: 'Aurora is walking alongside you on screen.' },
+  exercise: { label: 'Exercise', status: 'Aurora is moving and stretching with you on screen.' },
   relax: { label: 'Relax', status: 'Aurora is settling down with you.' },
   sleep: { label: 'Sleep', status: 'Aurora is in a quiet bedtime scene.' },
+}
+
+const readPresenceSetting = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw === null ? fallback : JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+const savePresenceSetting = (key: string, value: unknown) => {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage can be unavailable */ }
 }
 
 export function AuroraPresence({
@@ -48,15 +60,20 @@ export function AuroraPresence({
   const animationFrameRef = useRef<number | null>(null)
   const urlRef = useRef<string | null>(null)
   const playbackId = useRef(0)
+  const lastAutoSpokenRef = useRef('')
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [loading, setLoading] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState('')
   const [scene, setScene] = useState<AuroraScene>('together')
+  const [autoFollow, setAutoFollow] = useState(true)
+  const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
+  const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
+  const presenceKey = `ai_aurora_presence:${session?.user.id ?? 'guest'}`
   const recognitionType = typeof window !== 'undefined'
     ? (window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }).SpeechRecognition
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
@@ -105,11 +122,67 @@ export function AuroraPresence({
     setLoading(false)
   }
 
+  const play = async (text: string) => {
+    if (!session || !available || !text.trim()) return
+    stopPlayback()
+    const id = playbackId.current
+    setLoading(true)
+    setVoiceStatus('Preparing Aurora’s voice…')
+    try {
+      const blob = await generateAuroraSpeech(session, text)
+      if (id !== playbackId.current) return
+      const url = URL.createObjectURL(blob)
+      urlRef.current = url
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => { if (id === playbackId.current) stopPlayback() }
+      audio.onerror = () => { if (id === playbackId.current) { stopPlayback(); setVoiceStatus('Audio could not play on this device.') } }
+      await audio.play()
+      if (id === playbackId.current) {
+        startVoiceMeter(audio)
+        setLoading(false)
+        setSpeaking(true)
+        setVoiceStatus('')
+      }
+    } catch (error) {
+      if (id === playbackId.current) { stopPlayback(); setVoiceStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.') }
+    }
+  }
+
+  useEffect(() => {
+    const saved = readPresenceSetting<{ scene?: AuroraScene; autoFollow?: boolean }>(presenceKey, {})
+    if (saved.scene && saved.scene in sceneCopy) setScene(saved.scene)
+    setAutoFollow(saved.autoFollow !== false)
+    setAutoSpeak(false)
+    lastAutoSpokenRef.current = latestReply ?? ''
+  }, [presenceKey, latestReply])
+
+  useEffect(() => {
+    savePresenceSetting(presenceKey, { scene, autoFollow })
+  }, [presenceKey, scene, autoFollow])
+
   useEffect(() => {
     const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
+    const handleUserMessage = (event: Event) => {
+      if (!autoFollow) return
+      const text = (event as CustomEvent<string>).detail
+      if (typeof text !== 'string') return
+      const nextScene = inferAuroraScene(text)
+      if (nextScene) setScene(nextScene)
+    }
     window.addEventListener('aurora-ai-busy', handleAiBusy)
-    return () => window.removeEventListener('aurora-ai-busy', handleAiBusy)
-  }, [])
+    window.addEventListener('aurora-user-message', handleUserMessage)
+    return () => {
+      window.removeEventListener('aurora-ai-busy', handleAiBusy)
+      window.removeEventListener('aurora-user-message', handleUserMessage)
+    }
+  }, [autoFollow])
+
+  useEffect(() => {
+    if (!autoSpeak || !available || !latestReply || latestReply === lastAutoSpokenRef.current) return
+    lastAutoSpokenRef.current = latestReply
+    void play(latestReply)
+  }, [autoSpeak, available, latestReply])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
@@ -152,38 +225,12 @@ export function AuroraPresence({
     catch { setVoiceStatus('Microphone unavailable. You can type instead.') }
   }
 
-  const play = async (text: string) => {
-    if (!session || !available) return
-    stopPlayback()
-    const id = playbackId.current
-    setLoading(true)
-    setVoiceStatus('Preparing Aurora’s voice…')
-    try {
-      const blob = await generateAuroraSpeech(session, text)
-      if (id !== playbackId.current) return
-      const url = URL.createObjectURL(blob)
-      urlRef.current = url
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = () => { if (id === playbackId.current) stopPlayback() }
-      audio.onerror = () => { if (id === playbackId.current) { stopPlayback(); setVoiceStatus('Audio could not play on this device.') } }
-      await audio.play()
-      if (id === playbackId.current) {
-        startVoiceMeter(audio)
-        setLoading(false)
-        setSpeaking(true)
-        setVoiceStatus('')
-      }
-    } catch (error) {
-      if (id === playbackId.current) { stopPlayback(); setVoiceStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.') }
-    }
-  }
-
   return (
     <div
       className={`aurora-presence aurora-motion-${motionState} aurora-scene-${scene}`}
       data-motion-state={motionState}
       data-scene={scene}
+      data-daypart={daypart}
       style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
@@ -217,7 +264,26 @@ export function AuroraPresence({
           ))}
         </div>
 
-        <p className="small" aria-live="polite">Aurora motion: {motionState}.</p>
+        <div className="aurora-presence-options" role="group" aria-label="Aurora presence options">
+          <button type="button" onClick={() => setAutoFollow((current) => !current)} aria-pressed={autoFollow}>
+            Follow activity: {autoFollow ? 'On' : 'Off'}
+          </button>
+          <button
+            type="button"
+            disabled={!available}
+            onClick={() => setAutoSpeak((current) => {
+              const next = !current
+              if (next) lastAutoSpokenRef.current = latestReply ?? ''
+              else stopPlayback()
+              return next
+            })}
+            aria-pressed={autoSpeak}
+          >
+            Speak new replies: {autoSpeak ? 'On' : 'Off'}
+          </button>
+        </div>
+
+        <p className="small" aria-live="polite">Aurora motion: {motionState}. Scene: {sceneCopy[scene].label}. Ambience: {daypart}.</p>
         <div className="voice-controls">
           <button type="button" onClick={toggleListening} disabled={!recognitionType} aria-pressed={listening}>
             {listening ? 'Stop listening' : 'Speak a message'}
