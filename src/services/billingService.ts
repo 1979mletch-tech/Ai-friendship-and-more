@@ -3,6 +3,7 @@ import { ensureFreshSession, type AuthSession } from './authService'
 import type { PlanId } from '../types/subscription'
 
 const TRUSTED_BILLING_HOSTS = new Set(['checkout.stripe.com', 'billing.stripe.com'])
+const paidPlans = new Set<PlanId>(['pro-daily', 'pro-weekly', 'pro-monthly', 'pro-annual'])
 
 export const isTrustedBillingUrl = (value: unknown): value is string => {
   if (typeof value !== 'string') return false
@@ -30,7 +31,7 @@ const request = async (session: AuthSession, action: string, plan?: PlanId) => {
 
 export const getBillingPlan = async (session: AuthSession): Promise<PlanId> => {
   const result = await request(session, 'status')
-  return result.plan === 'pro-monthly' || result.plan === 'pro-annual' ? result.plan : 'free'
+  return paidPlans.has(result.plan as PlanId) ? result.plan as PlanId : 'free'
 }
 
 export const openBilling = async (session: AuthSession, action: 'checkout' | 'portal', plan?: PlanId) => {
