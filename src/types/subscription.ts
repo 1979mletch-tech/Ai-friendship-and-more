@@ -1,4 +1,4 @@
-export type PlanId = 'free' | 'pro-monthly' | 'pro-annual'
+export type PlanId = 'free' | 'pro-daily' | 'pro-weekly' | 'pro-monthly' | 'pro-annual'
 
 export type SubscriptionProvider = 'stripe' | 'none'
 

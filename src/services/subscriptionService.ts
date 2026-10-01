@@ -3,21 +3,25 @@ import type { SubscriptionState } from '../types/subscription'
 
 export const getSubscriptionState = (env: BillingEnv = readBillingEnv()): SubscriptionState => {
   if (env.provider === 'stripe') {
-    const isConfigured = Boolean(env.stripePublicKey && env.stripePriceMonthly && env.stripePriceAnnual)
+    const isConfigured = Boolean(
+      env.stripePriceDaily &&
+      env.stripePriceWeekly &&
+      env.stripePriceMonthly &&
+      env.stripePriceAnnual,
+    )
 
     return {
       provider: 'stripe',
       isConfigured,
       setupMessage: isConfigured
-        ? 'Billing details are present in this browser build. Checkout still requires live server configuration and adult verification.'
-        : 'Stripe selected but missing one or more keys/price IDs. Showing subscription preview only.',
+        ? 'Secure Stripe Checkout is configured. Adult verification is required before purchase.'
+        : 'Stripe is selected but one or more price IDs are missing. Payments stay disabled.',
     }
   }
 
   return {
     provider: 'none',
     isConfigured: false,
-    setupMessage:
-      'Billing provider not configured. Pricing is shown as a safe preview state with no real payments.',
+    setupMessage: 'Payments are currently disabled.',
   }
 }
