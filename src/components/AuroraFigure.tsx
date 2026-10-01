@@ -55,11 +55,14 @@ export function AuroraFigure() {
         </g>
 
         <g className="aurora-rig-head">
+          <ellipse className="aurora-face-warmth" cx="110" cy="79" rx="47" ry="51" fill="rgba(255,190,178,.08)" />
           <ellipse cx="110" cy="73" rx="58" ry="65" fill="#231f31" />
           <image href={portrait} x="56" y="13" width="108" height="124" preserveAspectRatio="xMidYMid slice" clipPath="url(#auroraFaceClip)" />
           <path className="aurora-hair-left" d="M58 73 Q50 132 76 146 Q67 107 74 79Z" fill="#211d2c" opacity=".92" />
           <path className="aurora-hair-right" d="M162 73 Q170 132 144 146 Q153 107 146 79Z" fill="#211d2c" opacity=".92" />
           <path className="aurora-rig-blink" d="M82 73 Q91 77 100 73 M120 73 Q129 77 138 73" fill="none" stroke="#3a2930" strokeWidth="3" strokeLinecap="round" />
+          <ellipse className="aurora-cheek aurora-cheek-left" cx="83" cy="91" rx="9" ry="5" fill="rgba(216,113,126,.12)" />
+          <ellipse className="aurora-cheek aurora-cheek-right" cx="137" cy="91" rx="9" ry="5" fill="rgba(216,113,126,.12)" />
           <ellipse className="aurora-rig-mouth" cx="110" cy="99" rx="9" ry="2.4" fill="#8e5567" />
         </g>
       </g>
