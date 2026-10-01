@@ -151,7 +151,6 @@ export function OwnerAurora() {
     if (!value || notes.includes(value)) return
     setNotes((current) => sanitizeOwnerNotes([...current, value]))
     setNoteDraft('')
-    setProjects(defaultOwnerProjects())
   }
 
   const clearWorkspace = () => {
@@ -160,6 +159,7 @@ export function OwnerAurora() {
     safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session), ownerKey('projects', session))
     setMessages([])
     setNotes([])
+    setProjects(defaultOwnerProjects())
     setInput('')
     setNoteDraft('')
     setStatus('Private Owner Aurora browser data cleared.')
