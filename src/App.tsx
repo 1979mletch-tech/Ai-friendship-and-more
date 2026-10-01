@@ -160,10 +160,18 @@ const App = () => {
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
   useEffect(() => {
     let active = true
+    let retryTimer = 0
     if (session && billing.isConfigured) {
-      void getBillingStatus(session).then((status) => { if (active) { setBillingStatus(status); setTrustedPlan(status.plan) } }).catch(() => undefined)
+      const refreshBilling = () => void getBillingStatus(session)
+        .then((status) => { if (active) { setBillingStatus(status); setTrustedPlan(status.plan) } })
+        .catch(() => undefined)
+      refreshBilling()
+      const returnedFromCheckout = new URLSearchParams(window.location.search).get('return') === 'billing-success'
+      if (returnedFromCheckout) {
+        retryTimer = window.setTimeout(refreshBilling, 1800)
+      }
     }
-    return () => { active = false }
+    return () => { active = false; if (retryTimer) window.clearTimeout(retryTimer) }
   }, [session, billing.isConfigured])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
