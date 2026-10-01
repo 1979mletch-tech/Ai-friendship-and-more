@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOwnerWorkspaceExport, sanitizeOwnerMessages, sanitizeOwnerNotes } from './ownerWorkspace'
+import { createOwnerWorkspaceExport, defaultOwnerProjects, sanitizeOwnerMessages, sanitizeOwnerNotes, sanitizeOwnerProjects } from './ownerWorkspace'
 
 describe('Owner Aurora workspace', () => {
   it('drops malformed messages and bounds retained history', () => {
@@ -27,5 +27,16 @@ describe('Owner Aurora workspace', () => {
     expect(bundle.workspace).toBe('Owner Aurora')
     expect(bundle.messages).toHaveLength(1)
     expect(bundle.notes).toEqual(['owner note'])
+  })
+  it('keeps Owner Aurora project state bounded to approved projects', () => {
+    const result = sanitizeOwnerProjects([
+      { id: 'ai-friendship', name: 'AI Friendship', status: 'active', summary: 'launch work' },
+      { id: 'unknown', name: 'Secret project', status: 'active', summary: 'no' },
+      { id: 'ai-doctor', name: 'AI Doctor', status: 'next', summary: 'verify repo first' },
+      { id: 'ai-doctor', name: 'duplicate', status: 'active', summary: 'no' },
+    ])
+    expect(result).toHaveLength(2)
+    expect(result.map((project) => project.id)).toEqual(['ai-friendship', 'ai-doctor'])
+    expect(defaultOwnerProjects()[1]?.status).toBe('next')
   })
 })
