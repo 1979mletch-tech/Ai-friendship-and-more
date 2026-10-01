@@ -11,6 +11,7 @@ describe('billing redirect safety', () => {
     expect(isTrustedBillingUrl('https://checkout.stripe.com.evil.example/session')).toBe(false)
     expect(isTrustedBillingUrl('http://checkout.stripe.com/session')).toBe(false)
     expect(isTrustedBillingUrl('javascript:alert(1)')).toBe(false)
+    expect(isTrustedBillingUrl('https://attacker:secret@checkout.stripe.com/session')).toBe(false)
     expect(isTrustedBillingUrl(undefined)).toBe(false)
   })
 })
