@@ -17,7 +17,7 @@ import { previewActivePlan } from './utils/planGuard'
 import { ChatRequestGate } from './utils/chatRequestGate'
 import { removeHistoryTurn } from './utils/history'
 import { sanitizeImportedMessages } from './utils/conversationImport'
-import { canSendAtLimit } from './utils/usage'
+import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './utils/usage'
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
 import { getBillingPlan, openBilling } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
@@ -119,6 +119,10 @@ const App = () => {
       (message.dayKey ||
         (message.createdAt ? getLocalDayKey(new Date(message.createdAt)) : '')) === today,
   ).length
+  const totalUserMessages = countUserMessagesTotal(messages)
+  const usedMessages = planId === 'free' ? totalUserMessages : todayUserMessages
+  const messageLimit = entitlements.usageLimits.dailyMessages
+  const messageRemaining = remainingMessages(usedMessages, messageLimit)
 
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
@@ -169,7 +173,7 @@ const App = () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     if (publicLiveMode && !session) { setChatStatus('Sign in and complete adult verification to use live chat.'); return }
     const userText = input.trim().slice(0, 2000)
-    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages)) return
+    if (!canSendAtLimit(userText, usedMessages, messageLimit)) return
     const generation = chatGate.current.begin()
     if (generation === null) return
 
@@ -189,6 +193,8 @@ const App = () => {
           [...messages, userMessage].map((m) => ({ role: m.role, text: m.text })),
           chatMode,
           companionName,
+          memoryItems,
+          visibleProjectNotes,
         )
         response = cloud.reply
         setChatStatus('')
@@ -338,11 +344,11 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      <AuroraPresence session={session} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
-      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
+      <AuroraPresence session={session} aiBusy={isSending} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
-      {!hasConsent && <p className="small" role="status">To send a preview message, tick the disclosure box below first.</p>}
+      {!hasConsent && <p className="small" role="status">To send a message, tick the disclosure box below first.</p>}
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -394,23 +400,27 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
+          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, usedMessages, messageLimit)}
         >
           Send
         </button>
       </div>
       {chatStatus && <p className="small" role="status" aria-live="polite">{chatStatus}</p>}
-      <p className="small">
-        Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
-        {entitlements.usageLimits.dailyMessages}.
-      </p>
-      {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit. Urgent safety guidance remains available; paid plans are not active yet.</p>
+      <div className="usage-card" aria-live="polite">
+        <strong>{planId === 'free' ? 'Free trial' : 'Paid plan'}</strong>
+        <span>{planId === 'free' ? `${usedMessages} of 10 free messages used · ${messageRemaining} remaining` : `${usedMessages} of ${messageLimit} messages used today · ${messageRemaining} remaining today`}</span>
+      </div>
+      <p className="small">Approved context available to Aurora: {memoryItems.length} memory item{memoryItems.length === 1 ? '' : 's'} and {visibleProjectNotes.length} project note{visibleProjectNotes.length === 1 ? '' : 's'}. <a href="#/memory">Review memory</a></p>
+      {usedMessages >= messageLimit && planId === 'free' && (
+        <p className="warn">Your 10 free AI messages are used. <a href="#/pricing">Choose a plan to continue chatting.</a> Urgent safety guidance remains available.</p>
+      )}
+      {usedMessages >= messageLimit && planId !== 'free' && (
+        <p className="warn">You reached today’s paid message limit. Urgent safety guidance remains available; normal chat resets with the next daily allowance.</p>
       )}
 
-      <h3>Creative project memory (local fallback)</h3>
+      <h3>Creative project context</h3>
       <p className="small">
-        Keep only non-sensitive preferences, approved project notes, and creative context. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
+        Keep only non-sensitive preferences, approved project notes, and creative context. Approved items are included in live Aurora replies. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
       </p>
       <div className="grid">
         <label>
@@ -450,7 +460,6 @@ const App = () => {
     </section>
   )
 
-
   const renderHistory = () => (
     <section className="panel">
       <h2>Conversation History</h2>
@@ -478,7 +487,7 @@ const App = () => {
   const renderMemory = () => (
     <section className="panel">
       <h2>Memory</h2>
-      <p>Choose what {companionName} may remember. Memory is user-controlled and local-only in this preview.</p>
+      <p>Choose what {companionName} may remember. Approved local memory is included as bounded context in live Aurora replies when you are signed in; cloud backup remains a separate manual control.</p>
       <div className="input-row">
         <input aria-label="Memory item" value={memoryDraft} onChange={(e) => setMemoryDraft(e.target.value)} placeholder="Example: I am writing a novel" maxLength={240} />
         <button type="button" onClick={() => {
@@ -517,7 +526,6 @@ const App = () => {
       <p className="warn">{hasCloudAuth() ? 'Local data is kept separately for each signed-in account on this browser. Cloud backup is manual and still requires staging verification.' : 'Cloud accounts are not configured in this preview. Local browser storage is not a private account vault.'}</p>
     </section>
   )
-
 
   const renderAccount = () => (
     <section className="panel">
@@ -652,12 +660,9 @@ const App = () => {
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
-      <p>
-        Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
-        in safe preview mode.
-      </p>
+      <p>Start with 10 free AI messages, then choose the access period that suits you. Stripe shows the exact amount and renewal terms before payment.</p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
-      {billing.isConfigured && <p className="small">Review the exact currency, amount and renewal terms on Stripe Checkout before paying. Paid access starts only after Stripe confirms the subscription.</p>}
+      {billing.isConfigured && <p className="small">Paid access starts only after Stripe confirms the subscription.</p>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
@@ -702,6 +707,7 @@ const App = () => {
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>Secrets must stay in environment variables, never hard-coded.</li>
         <li>You can clear chat history and creative notes locally at any time.</li>
+        <li>Approved memory is bounded before it is sent as context to live Aurora.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
         <li>AI/database providers may process data per their terms and configuration.</li>
       </ul>
