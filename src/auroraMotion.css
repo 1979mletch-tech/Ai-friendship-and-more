@@ -11,3 +11,10 @@
 @keyframes aurora-natural-breath{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-1px) scaleY(1.003)}}
 @keyframes aurora-attend{0%,100%{transform:rotate(0)}35%{transform:rotate(1.7deg) translateY(-1px)}70%{transform:rotate(-.7deg)}}
 @keyframes aurora-small-wave{0%,100%{transform:rotate(0)}35%{transform:rotate(-20deg)}65%{transform:rotate(-8deg)}}
+
+.aurora-face-warmth,.aurora-cheek{opacity:0;transition:opacity .5s ease}
+.aurora-presence[data-reaction="warm"] .aurora-face-warmth,.aurora-presence[data-reaction="amused"] .aurora-face-warmth,.aurora-presence[data-reaction="celebrate"] .aurora-face-warmth{opacity:1}
+.aurora-presence[data-reaction="warm"] .aurora-cheek,.aurora-presence[data-reaction="amused"] .aurora-cheek,.aurora-presence[data-reaction="celebrate"] .aurora-cheek{opacity:.72}
+.aurora-presence[data-reaction="amused"] .aurora-rig-mouth,.aurora-presence[data-reaction="warm"] .aurora-rig-mouth,.aurora-presence[data-reaction="celebrate"] .aurora-rig-mouth{transform:scaleX(1.12) scaleY(calc(1 + var(--aurora-voice-energy,0)*3))}
+.aurora-motion-listening .aurora-rig{animation-duration:6.8s}
+.aurora-motion-thinking .aurora-rig{animation-duration:6.3s}
