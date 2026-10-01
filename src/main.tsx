@@ -8,6 +8,9 @@ import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReturnFlowBridge } from './components/ReturnFlowBridge'
 import { RuntimeGuard } from './components/RuntimeGuard'
+import { registerAuroraServiceWorker } from './registerServiceWorker'
+
+registerAuroraServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
