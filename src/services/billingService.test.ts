@@ -7,7 +7,7 @@ describe('billing redirect safety', () => {
     expect(isTrustedBillingUrl('https://billing.stripe.com/p/session/example')).toBe(true)
   })
 
-  it('rejects lookalike, non-HTTPS and malformed billing URLs', () => {
+  it('rejects lookalike, non-HTTPS, credential-bearing and malformed billing URLs', () => {
     expect(isTrustedBillingUrl('https://checkout.stripe.com.evil.example/session')).toBe(false)
     expect(isTrustedBillingUrl('http://checkout.stripe.com/session')).toBe(false)
     expect(isTrustedBillingUrl('javascript:alert(1)')).toBe(false)
