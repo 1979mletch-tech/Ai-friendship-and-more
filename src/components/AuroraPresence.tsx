@@ -32,10 +32,13 @@ const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
 
 const reactionCopy: Record<AuroraReaction, string> = {
   neutral: 'Present',
+  warm: 'Warmly with you',
+  amused: 'Sharing the smile',
   celebrate: 'Celebrating with you',
   encourage: 'Encouraging you',
   calm: 'Keeping things calm',
   focus: 'Focused with you',
+  concerned: 'Listening closely',
 }
 
 const momentStarters: Array<{ label: string; scene: AuroraScene; prompt: string }> = [
@@ -87,7 +90,10 @@ export function AuroraPresence({
   const [autoFollow, setAutoFollow] = useState(true)
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
+  const [speechPulse, setSpeechPulse] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
+  const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
+  const [gaze, setGaze] = useState<'center' | 'left' | 'right'>('center')
   const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
@@ -102,6 +108,7 @@ export function AuroraPresence({
     animationFrameRef.current = null
     analyserRef.current = null
     setVoiceEnergy(0)
+    setSpeechPulse(0)
   }
 
   const startVoiceMeter = (audio: HTMLAudioElement) => {
@@ -120,7 +127,9 @@ export function AuroraPresence({
       const tick = () => {
         analyser.getByteFrequencyData(samples)
         const average = samples.reduce((sum, sample) => sum + sample, 0) / Math.max(1, samples.length)
-        setVoiceEnergy(Math.min(1, average / 110))
+        const energy = Math.min(1, average / 110)
+        setVoiceEnergy(energy)
+        setSpeechPulse((current) => current * 0.72 + energy * 0.28)
         animationFrameRef.current = requestAnimationFrame(tick)
       }
       tick()
@@ -180,11 +189,26 @@ export function AuroraPresence({
   }, [presenceKey, scene, autoFollow])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    let timer = 0
+    const scheduleGaze = () => {
+      timer = window.setTimeout(() => {
+        setGaze((current) => current === 'center' ? (Date.now() % 2 ? 'left' : 'right') : 'center')
+        scheduleGaze()
+      }, 4200 + Math.floor(Math.random() * 3800))
+    }
+    scheduleGaze()
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
     const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
     const handleUserMessage = (event: Event) => {
       const text = (event as CustomEvent<string>).detail
       if (typeof text !== 'string') return
       setReaction(inferAuroraReaction(text))
+      setEngagement('engaged')
+      window.setTimeout(() => setEngagement('idle'), 6500)
       if (!autoFollow) return
       const nextScene = inferAuroraScene(text)
       if (nextScene) setScene(nextScene)
@@ -264,7 +288,9 @@ export function AuroraPresence({
       data-scene={scene}
       data-daypart={daypart}
       data-reaction={reaction}
-      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
+      data-engagement={engagement}
+      data-gaze={gaze}
+      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3), '--aurora-speech-pulse': speechPulse.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
         <div className="aurora-sky" aria-hidden="true" />
