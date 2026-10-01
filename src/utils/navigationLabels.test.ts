@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{navLabelFor,publicNavigation}from'./navigationLabels';describe('navigation labels',()=>{it('covers primary routes',()=>expect(publicNavigation.length).toBe(9));it('labels privacy',()=>expect(navLabelFor('/privacy')).toBe('Privacy'));it('defaults unknown route safely',()=>expect(navLabelFor('/x')).toBe('Home'))})

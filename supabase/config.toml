@@ -1,0 +1,19 @@
+project_id = "ai-friendship"
+
+[functions.chat]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false
+
+[functions.verify-age]
+verify_jwt = false
+
+[functions.billing]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.speak]
+verify_jwt = false

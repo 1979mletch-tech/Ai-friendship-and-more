@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{canonicalPath,seoMetadata}from'./seo';describe('seo metadata',()=>{it('normalizes path',()=>expect(canonicalPath('privacy')).toBe('/privacy'));it('brands title',()=>expect(seoMetadata('/').title).toContain('AI Aurora'));it('has description',()=>expect(seoMetadata().description.length).toBeGreaterThan(20))})

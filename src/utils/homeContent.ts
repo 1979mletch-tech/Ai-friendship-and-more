@@ -1,0 +1,2 @@
+export const homeStarters=['Help me break a creative block','Give me 3 songwriting ideas','Reflect on my week kindly','Plan my next focused hour'] as const
+export const homeFeatures=[{title:'Talk it through',detail:'Conversation for everyday thoughts, decisions and reflection.'},{title:'Create with Aurora',detail:'Move through creative blocks and develop ideas.'},{title:'Memory you control',detail:'Choose what Aurora may remember and remove it when you want.'}] as const

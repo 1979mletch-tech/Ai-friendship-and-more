@@ -9,7 +9,7 @@ export const getSubscriptionState = (env: BillingEnv = readBillingEnv()): Subscr
       provider: 'stripe',
       isConfigured,
       setupMessage: isConfigured
-        ? 'Billing provider configured. Connect checkout + webhooks server-side before production launch.'
+        ? 'Billing details are present in this browser build. Checkout still requires live server configuration and adult verification.'
         : 'Stripe selected but missing one or more keys/price IDs. Showing subscription preview only.',
     }
   }

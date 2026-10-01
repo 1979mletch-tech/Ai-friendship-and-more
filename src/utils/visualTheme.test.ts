@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{auroraTheme,hasReadableThemeBasics}from'./visualTheme';describe('visual theme',()=>{it('uses Aurora midnight background',()=>expect(auroraTheme.background).toBe('#090817'));it('defines visible focus colour',()=>expect(auroraTheme.focus).toBeTruthy());it('separates text and surfaces',()=>expect(hasReadableThemeBasics()).toBe(true))})

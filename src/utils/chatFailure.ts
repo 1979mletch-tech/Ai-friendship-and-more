@@ -1,0 +1,3 @@
+export type ChatFailure='offline'|'unauthorized'|'rate-limit'|'provider'|'unknown'
+export const classifyChatFailure=(status:number):ChatFailure=>status===401?'unauthorized':status===429?'rate-limit':status===502||status===503?'provider':status===0?'offline':'unknown'
+export const chatFailureCopy=(failure:ChatFailure)=>({offline:'You appear offline. Local fallback is available.',unauthorized:'Your session needs to be renewed.', 'rate-limit':'Too many requests. Please wait and try again.',provider:'Live AI is temporarily unavailable. Local fallback is available.',unknown:'Live AI could not respond. Local fallback is available.'}[failure])

@@ -1,12 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, isCrisisText } from './utils/safety'
+import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
+import { hasCloudAuth } from './config/cloud'
+import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
+import { sendCloudChat } from './services/chatService'
+import { backupConversation, backupMemoryItems, deleteCloudConversation, deleteCloudMemory, loadCloudConversations, loadCloudMemories, type CloudConversationRow, type CloudMemoryRow } from './services/cloudSyncServiceV2'
+import { getProfile } from './services/cloudDataService'
+import { createExportBundle, downloadJson } from './utils/exportData'
+import { routeRequiresAdultGate } from './utils/adultRoutes'
+import { accountDataKeys, accountDeletionKeys, localAccountKey } from './utils/localAccountScope'
+import { previewActivePlan } from './utils/planGuard'
+import { ChatRequestGate } from './utils/chatRequestGate'
+import { removeHistoryTurn } from './utils/history'
+import { sanitizeImportedMessages } from './utils/conversationImport'
+import { canSendAtLimit } from './utils/usage'
+import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
+import { getBillingPlan, openBilling } from './services/billingService'
+import { AuroraPresence } from './components/AuroraPresence'
 
-type Route = '/' | '/chat' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -29,20 +45,18 @@ const STORAGE_KEYS = {
   plan: 'ai_friendship_plan',
   messages: 'ai_friendship_messages',
   notes: 'ai_friendship_project_notes',
+  memory: 'ai_friendship_memory',
+  companionName: 'ai_friendship_companion_name',
+  adultAccess: 'ai_aurora_adult_access',
 }
 
 const parseRoute = (): Route => {
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
+  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/account' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
     return hash
   }
   return '/'
 }
-
-const validPlanIds: PlanId[] = ['free', 'pro-monthly', 'pro-annual']
-
-const normalizePlanId = (value: unknown): PlanId =>
-  typeof value === 'string' && validPlanIds.includes(value as PlanId) ? (value as PlanId) : 'free'
 
 const getLocalDayKey = (date: Date): string => {
   const year = date.getFullYear()
@@ -52,23 +66,42 @@ const getLocalDayKey = (date: Date): string => {
 }
 
 const App = () => {
+  const publicLiveMode = import.meta.env.VITE_PUBLIC_LIVE_MODE === 'true'
+  const ageVerificationEnabled = import.meta.env.VITE_AGE_VERIFICATION_ENABLED === 'true'
   const [route, setRoute] = useState<Route>(parseRoute())
+  const [session, setSession] = useState<AuthSession | null>(() => loadSession())
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authStatus, setAuthStatus] = useState('')
+  const [cloudConversations, setCloudConversations] = useState<CloudConversationRow[] | null>(null)
+  const [cloudMemories, setCloudMemories] = useState<CloudMemoryRow[] | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
+  const authBusyRef = useRef(false)
+  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
+  const [isSending, setIsSending] = useState(false)
+  const chatGate = useRef(new ChatRequestGate())
+  const [chatStatus, setChatStatus] = useState('')
   const [hasConsent, setHasConsent] = useState<boolean>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.consent, false),
+    safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
-  const [planId, setPlanId] = useState<PlanId>(() => normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')))
+  const [trustedPlan, setTrustedPlan] = useState<PlanId>('free')
+  const planId: PlanId = session ? trustedPlan : previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    safeLocalStorageGet(STORAGE_KEYS.messages, []),
+    safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, session), []),
   )
+  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Friend'))
+  const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
+  const [memoryDraft, setMemoryDraft] = useState('')
+  const [historyQuery, setHistoryQuery] = useState('')
   const [project, setProject] = useState('')
   const [tags, setTags] = useState('')
   const [note, setNote] = useState('')
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>(() =>
     applyProjectNotesLimit(
-      safeLocalStorageGet(STORAGE_KEYS.notes, []),
-      normalizePlanId(safeLocalStorageGet(STORAGE_KEYS.plan, 'free')),
+      safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, session), []),
+      'free',
     ),
   )
   const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
@@ -117,35 +150,64 @@ const App = () => {
     }
   }, [])
 
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.consent, hasConsent), [hasConsent])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, planId), [planId])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.messages, messages), [messages])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.notes, projectNotes), [projectNotes])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
+  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
+  useEffect(() => {
+    let active = true
+    if (session && billing.isConfigured) {
+      void getBillingPlan(session).then((plan) => { if (active) setTrustedPlan(plan) }).catch(() => undefined)
+    }
+    return () => { active = false }
+  }, [session, billing.isConfigured])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.memory, session), memoryItems), [memoryItems, session])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.companionName, session), companionName), [companionName, session])
 
-  const sendMessage = () => {
-    if (!input.trim() || !hasConsent) return
-    const userText = input.trim()
-    if (todayUserMessages >= entitlements.usageLimits.dailyMessages) return
+  const sendMessage = async () => {
+    if (!adultAccess || !input.trim() || !hasConsent || isSending) return
+    if (publicLiveMode && !session) { setChatStatus('Sign in and complete adult verification to use live chat.'); return }
+    const userText = input.trim().slice(0, 2000)
+    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages)) return
+    const generation = chatGate.current.begin()
+    if (generation === null) return
 
-    const crisis = isCrisisText(userText)
-
-    const response = crisis
-      ? 'I care about your safety. If you are in immediate danger or might act on these thoughts, contact local emergency services now and reach out to a trusted person or crisis line in your region.'
-      : chatMode === 'creative'
-        ? 'Let’s keep your creative momentum going. Want a quick spark, a project check-in, or gentle feedback on your latest idea?'
-        : 'I’m here with you. We can reflect, brainstorm, or just talk through what matters right now.'
-
+    let response = getAssistantResponse(userText, chatMode)
     const localDayKey = getLocalDayKey(new Date())
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(), role: 'user', text: userText,
+      createdAt: new Date().toISOString(), dayKey: localDayKey,
+    }
+
+    if (session && !isCrisisTextForClient(userText)) {
+      setIsSending(true)
+      setChatStatus('AI is responding…')
+      try {
+        const cloud = await sendCloudChat(
+          session,
+          [...messages, userMessage].map((m) => ({ role: m.role, text: m.text })),
+          chatMode,
+          companionName,
+        )
+        response = cloud.reply
+        setChatStatus('')
+      } catch (error) {
+        if (!chatGate.current.isCurrent(generation)) return
+        chatGate.current.finish(generation)
+        setChatStatus(error instanceof Error ? `Message not sent: ${error.message}` : 'Message not sent. Please try again.')
+        return
+      } finally {
+        if (chatGate.current.isCurrent(generation)) setIsSending(false)
+      }
+    }
+
+    if (!chatGate.current.isCurrent(generation)) return
+    chatGate.current.finish(generation)
 
     setMessages((current) => [
       ...current,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        createdAt: new Date().toISOString(),
-        dayKey: localDayKey,
-      },
+      userMessage,
       {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -170,46 +232,117 @@ const App = () => {
   }
 
   const clearLocalData = () => {
-    safeLocalStorageDelete(STORAGE_KEYS.messages, STORAGE_KEYS.notes)
+    chatGate.current.invalidate()
+    setIsSending(false)
+    setChatStatus('')
+    safeLocalStorageDelete(...accountDataKeys(session))
     setMessages([])
     setProjectNotes([])
+    setMemoryItems([])
+  }
+
+  const activateSession = (next: AuthSession | null) => {
+    chatGate.current.invalidate()
+    setIsSending(false)
+    setChatStatus('')
+    setCloudConversations(null)
+    setCloudMemories(null)
+    setTrustedPlan('free')
+    setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
+    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
+    setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
+    setProjectNotes(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, next), []))
+    setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
+    setInput('')
+    setMemoryDraft('')
+    setHistoryQuery('')
+    setProject('')
+    setTags('')
+    setNote('')
+    setSession(next)
+  }
+
+  const runAccountAction = async (action: () => Promise<void>) => {
+    if (authBusyRef.current) return
+    authBusyRef.current = true
+    setAuthBusy(true)
+    try { await action() }
+    catch { setAuthStatus('The account action could not be completed. Please try again.') }
+    finally { authBusyRef.current = false; setAuthBusy(false) }
   }
 
   const renderHome = () => (
     <section className="panel">
-      <h1>AI Friendship</h1>
-      <p>
-        A warm AI companion for artists and creative people—writers, musicians, designers, filmmakers,
-        dancers, photographers—and anyone who wants supportive conversation.
-      </p>
-      <p>
-        Use it for brainstorming, reflection, encouragement, creative blocks, and project continuity. It is
-        not human, not therapy, and not an emergency service.
-      </p>
+      <div className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">MEET AI AURORA</p>
+          <h1>Ideas glow brighter<br />when you’re not thinking alone.</h1>
+          <p className="hero-lead">A warm AI companion for conversation, creativity and the moments when you need somewhere to think out loud.</p>
+          <div className="hero-actions">
+            <a className="primary-cta" href="#/chat">Talk to Aurora</a>
+            <a className="secondary-cta" href="#/pricing">Explore plans</a>
+          </div>
+          <p className="trust-line">18+ interactive experience · AI companion · You control memory · Clear privacy controls</p>
+        </div>
+        <div className="aurora-stage">
+          <div className="aurora-glow aurora-glow-one" />
+          <div className="aurora-glow aurora-glow-two" />
+          <img className="aurora-hero-portrait" src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="Illustrated portrait of Aurora, a fictional adult AI companion" />
+          <p>Always AI. Designed to feel easy to talk to.</p>
+        </div>
+      </div>
+      <div className="home-intro">
+        <p className="eyebrow">START WHERE YOU ARE</p>
+        <h2>What would help right now?</h2>
+      </div>
       <div className="starters">
         {['Help me break a creative block', 'Give me 3 songwriting ideas', 'Reflect on my week kindly', 'Plan my next focused hour'].map(
           (starter) => (
-            <button
-              key={starter}
-              type="button"
-              onClick={() => {
-                window.location.hash = '/chat'
-                setChatMode('creative')
-                setInput(starter)
-              }}
-            >
-              {starter}
+            <button key={starter} type="button" onClick={() => { window.location.hash = '/chat'; setChatMode('creative'); setInput(starter) }}>
+              <span className="starter-icon">✦</span>{starter}<span aria-hidden="true">→</span>
             </button>
           ),
         )}
       </div>
+      <section className="feature-strip" aria-label="AI Aurora highlights">
+        <article><span>01</span><h3>Talk it through</h3><p>Conversation for everyday thoughts, decisions and reflection without pretending the AI is human.</p></article>
+        <article><span>02</span><h3>Create with Aurora</h3><p>Move through creative blocks, develop ideas and keep useful project context close at hand.</p></article>
+        <article><span>03</span><h3>Memory you control</h3><p>Choose what Aurora may remember, review it whenever you want and remove it when you are done.</p></article>
+      </section>
+      <section className="showcase">
+        <div>
+          <p className="eyebrow">BUILT AROUND YOU</p>
+          <h2>One place to think, make and come back to.</h2>
+          <p>Switch between everyday conversation and creative mode. Keep the pieces that matter. Leave behind the ones that do not.</p>
+          <a className="text-link" href="#/memory">See memory controls →</a>
+        </div>
+        <div className="conversation-card">
+          <p className="mini-label">CREATIVE MODE</p>
+          <div className="sample user-sample">I have the beginning of an idea, but I can’t see where it goes.</div>
+          <div className="sample aurora-sample"><strong>Aurora</strong><br />Tell me the part that still feels alive. We can explore a few directions without forcing it.</div>
+        </div>
+      </section>
+      <section className="privacy-callout">
+        <div><p className="eyebrow">CLEAR BY DESIGN</p><h2>Your conversation should come with controls.</h2></div>
+        <p>AI Aurora keeps its AI identity visible, gives you direct memory and deletion controls, and separates preview features from services that still require live verification.</p>
+        <a className="secondary-cta" href="#/privacy">Privacy centre</a>
+      </section>
+      <section className="final-cta">
+        <div className="aurora-mini">A</div>
+        <h2>There’s room here for the thought you haven’t finished yet.</h2>
+        <p>Start a conversation, bring an idea, or simply think out loud.</p>
+        <a className="primary-cta" href="#/chat">Start with Aurora</a>
+      </section>
     </section>
   )
 
   const renderChat = () => (
     <section className="panel">
-      <h2>Companion Chat</h2>
+      <AuroraPresence session={session} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
+      {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
+      {!hasConsent && <p className="small" role="status">To send a preview message, tick the disclosure box below first.</p>}
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -242,7 +375,7 @@ const App = () => {
           <ul>
             {messages.map((msg) => (
               <li key={msg.id} className={msg.role === 'assistant' ? 'assistant' : 'user'}>
-                <strong>{msg.role === 'assistant' ? 'Friend' : 'You'}:</strong> {msg.text}
+                <strong>{msg.role === 'assistant' ? companionName : 'You'}:</strong> {msg.text}
               </li>
             ))}
           </ul>
@@ -253,23 +386,26 @@ const App = () => {
         <input
           aria-label="Message input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); setChatStatus('') }}
           placeholder="Share what’s on your mind or your project."
+          maxLength={2000}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() } }}
         />
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || todayUserMessages >= entitlements.usageLimits.dailyMessages}
+          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages)}
         >
           Send
         </button>
       </div>
+      {chatStatus && <p className="small" role="status" aria-live="polite">{chatStatus}</p>}
       <p className="small">
         Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
         {entitlements.usageLimits.dailyMessages}.
       </p>
       {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit for this plan. Try again tomorrow or choose Pro.</p>
+        <p className="warn">You reached today’s message limit. Urgent safety guidance remains available; paid plans are not active yet.</p>
       )}
 
       <h3>Creative project memory (local fallback)</h3>
@@ -314,6 +450,205 @@ const App = () => {
     </section>
   )
 
+
+  const renderHistory = () => (
+    <section className="panel">
+      <h2>Conversation History</h2>
+      <p className="small">History is stored for this {session ? 'account' : 'guest'} in this browser. Cloud backup is manual; automatic sync is not enabled.</p>
+      <label>Search history<input type="search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search messages" /></label>
+      <p className="small">{messages.filter((message) => message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())).length} matching messages</p>
+      {messages.length === 0 ? <p>No saved messages yet.</p> : messages.every((message) => !message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())) ? <p>No messages match your search.</p> : (
+        <ul className="history-list">
+          {messages.filter((message) => message.text.toLocaleLowerCase().includes(historyQuery.trim().toLocaleLowerCase())).map((msg) => (
+            <li key={msg.id}>
+              <strong>{msg.role === 'assistant' ? companionName : 'You'}</strong>
+              <span>{msg.text}</span>
+              <small>{msg.createdAt ? new Date(msg.createdAt).toLocaleString() : 'Saved locally'}</small>
+              <button type="button" aria-label={`Delete message turn from ${msg.role === 'assistant' ? companionName : 'You'}`} onClick={() => { chatGate.current.invalidate(); setIsSending(false); setMessages((current) => removeHistoryTurn(current, msg.id)) }}>Delete turn</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" disabled={messages.length === 0} onClick={() => { if (!window.confirm('Delete all local conversation history for this browser identity? Cloud backups are not deleted.')) return; chatGate.current.invalidate(); setIsSending(false); setChatStatus(''); safeLocalStorageDelete(localAccountKey(STORAGE_KEYS.messages, session), localAccountKey('ai_friendship_cloud_conversation_id', session)); setMessages([]) }}>
+        Clear conversation history
+      </button>
+    </section>
+  )
+
+  const renderMemory = () => (
+    <section className="panel">
+      <h2>Memory</h2>
+      <p>Choose what {companionName} may remember. Memory is user-controlled and local-only in this preview.</p>
+      <div className="input-row">
+        <input aria-label="Memory item" value={memoryDraft} onChange={(e) => setMemoryDraft(e.target.value)} placeholder="Example: I am writing a novel" maxLength={240} />
+        <button type="button" onClick={() => {
+          const value = memoryDraft.trim()
+          if (!value || memoryItems.includes(value)) return
+          setMemoryItems((current) => [...current, value].slice(-50))
+          setMemoryDraft('')
+        }}>Remember this</button>
+      </div>
+      {memoryItems.length === 0 ? <p className="small">Nothing saved to memory.</p> : (
+        <ul className="memory-list">{memoryItems.map((item) => (
+          <li key={item}><span>{item}</span><button type="button" onClick={() => setMemoryItems((current) => current.filter((value) => value !== item))}>Forget</button></li>
+        ))}</ul>
+      )}
+      <button type="button" onClick={() => { if (window.confirm('Clear memory saved in this browser? Cloud memories must be deleted separately in Account.')) setMemoryItems([]) }}>Clear local memory</button>
+    </section>
+  )
+
+  const renderSettings = () => (
+    <section className="panel">
+      <h2>Companion Settings</h2>
+      <label>
+        Companion name
+        <input value={companionName} maxLength={32} onChange={(e) => setCompanionName(e.target.value.replace(/[<>]/g, '').slice(0, 32))} />
+      </label>
+      <p className="small">AI Aurora always remains clearly identified as AI even when you choose a companion name.</p>
+      <h3>Data controls</h3>
+      <p className="small">Deleting local data removes this {session ? 'account’s' : 'guest’s'} chat, project notes and memory from this browser. Review or delete cloud backups separately in Account.</p>
+      <div className="account-actions">
+        <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
+          messages, memory: memoryItems, projectNotes, companionName,
+        }))}>Export my local data</button>
+        <button type="button" onClick={clearLocalData}>Delete local chat, memory + project data</button>
+      </div>
+      <h3>Account status</h3>
+      <p className="warn">{hasCloudAuth() ? 'Local data is kept separately for each signed-in account on this browser. Cloud backup is manual and still requires staging verification.' : 'Cloud accounts are not configured in this preview. Local browser storage is not a private account vault.'}</p>
+    </section>
+  )
+
+
+  const renderAccount = () => (
+    <section className="panel">
+      <h2>Account</h2>
+      {!adultAccess && <div className="age-notice"><strong>18+ only.</strong> Adult eligibility must be established before account creation or interactive companion access.</div>}
+      {!hasCloudAuth() ? (
+        <p className="warn">Cloud accounts are not configured on this deployment yet. Local preview features remain available.</p>
+      ) : session ? (
+        <>
+          <p>Signed in as <strong>{session.user.email}</strong>.</p>
+          <div className="age-notice">
+            <strong>Adult verification for live AI</strong>
+            <p>{ageVerificationEnabled ? 'Stripe Identity checks an ID document. AI Aurora receives only the 18+ result, not your document or date of birth. The service may pay a fee for each completed check.' : 'Live adult verification is being set up. Browser confirmation does not unlock live AI.'}</p>
+            {ageVerificationEnabled && <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const url = await startAgeVerification(session)
+                if (url) window.location.assign(url)
+                else setAuthStatus('Adult status is already verified for this account.')
+              } catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Could not start verification.') }
+            })}>Start adult verification</button>}
+            {ageVerificationEnabled && hasPendingAgeVerification(session) && <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const result = await finishAgeVerification(session)
+                setAuthStatus(result.verified ? 'Adult status verified. Live chat may now be available.' :
+                  result.status === 'not-eligible' ? 'Adult eligibility could not be confirmed.' :
+                  'Verification has not completed. Please finish the Stripe check and try again.')
+              } catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Could not check verification.') }
+            })}>Check verification result</button>}
+          </div>
+          <p className="small">Cloud-backed features must still pass two-account isolation testing before production use.</p>
+          <div className="account-actions">
+            <button type="button" disabled={authBusy || messages.length === 0} onClick={() => void runAccountAction(async () => {
+              try {
+                const backupKey = localAccountKey('ai_friendship_cloud_conversation_id', session)
+                const backupId = safeLocalStorageGet(backupKey, '') || crypto.randomUUID()
+                safeLocalStorageSet(backupKey, backupId)
+                await backupConversation(session, 'AI Aurora conversation', chatMode, messages, backupId)
+                setAuthStatus('Conversation backed up to your cloud account.')
+              } catch { setAuthStatus('Cloud conversation backup failed. Your local data is unchanged.') }
+            })}>Back up conversation</button>
+            <button type="button" disabled={authBusy || memoryItems.length === 0} onClick={() => void runAccountAction(async () => {
+              try {
+                await backupMemoryItems(session, memoryItems)
+                setAuthStatus('Approved memory backed up to your cloud account.')
+              } catch { setAuthStatus('Cloud memory backup failed. Your local data is unchanged.') }
+            })}>Back up approved memory</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const [conversations, memories] = await Promise.all([loadCloudConversations(session), loadCloudMemories(session)])
+                setCloudConversations(conversations)
+                setCloudMemories(memories)
+                setAuthStatus(`Loaded ${conversations.length} cloud conversations and ${memories.length} cloud memories.`)
+              } catch { setAuthStatus('Could not load cloud data. Please try again.') }
+            })}>Review cloud data</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try {
+                const [conversations, memories, profile] = await Promise.all([loadCloudConversations(session), loadCloudMemories(session), getProfile(session)])
+                downloadJson('ai-friendship-account-export.json', {
+                  product: 'AI Friendship', exportedAt: new Date().toISOString(),
+                  local: createExportBundle({ messages, memory: memoryItems, projectNotes, companionName }),
+                  cloud: { conversations, memories, profile },
+                })
+                setAuthStatus('Account data export downloaded to this device.')
+              } catch { setAuthStatus('Account export failed. No partial export was downloaded.') }
+            })}>Export cloud + local data</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              await signOut(session)
+              activateSession(null)
+              setAuthStatus('Signed out.')
+            })}>Sign out</button>
+            <button className="danger" type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              const confirmed = window.confirm('Permanently delete this AI Aurora account and its cloud data?')
+              if (!confirmed) return
+              try {
+                await deleteAccount(session)
+                safeLocalStorageDelete(...accountDeletionKeys(session))
+                activateSession(null)
+                setAuthStatus('Account deleted.')
+              } catch { setAuthStatus('Account deletion failed. Local data was not cleared.') }
+            })}>Delete account permanently</button>
+          </div>
+          {cloudConversations && <section aria-label="Cloud conversations"><h3>Cloud conversations</h3>{cloudConversations.length === 0 ? <p>None saved.</p> : <ul>{cloudConversations.map((row) => <li key={row.id}><span>{row.title} ({Array.isArray(row.messages) ? row.messages.length : 0} messages)</span> <button type="button" disabled={authBusy} onClick={() => {
+            const restored = sanitizeImportedMessages(row.messages)
+            if (!restored.length) { setAuthStatus('This cloud conversation has no valid messages to restore.'); return }
+            if (!window.confirm('Replace local conversation history with this cloud backup? Export local data first if you want to keep it.')) return
+            chatGate.current.invalidate()
+            setIsSending(false)
+            setMessages(restored)
+            setChatMode(row.mode === 'creative' ? 'creative' : 'general')
+            safeLocalStorageSet(localAccountKey('ai_friendship_cloud_conversation_id', session), row.id)
+            setAuthStatus('Cloud conversation restored to this browser.')
+          }}>Restore to browser</button> <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+            if (!window.confirm(`Delete cloud conversation “${row.title}”?`)) return
+            try { await deleteCloudConversation(session, row.id); setCloudConversations((current) => current?.filter((item) => item.id !== row.id) ?? null); setAuthStatus('Cloud conversation deleted.') }
+            catch { setAuthStatus('Cloud conversation deletion failed.') }
+          })}>Delete cloud conversation</button></li>)}</ul>}</section>}
+          {cloudMemories && <section aria-label="Cloud memories"><h3>Cloud memories</h3>{cloudMemories.length === 0 ? <p>None saved.</p> : <ul>{cloudMemories.map((row) => <li key={row.id}><span>{row.value}</span> <button type="button" disabled={authBusy} onClick={() => {
+            if (typeof row.value !== 'string' || !row.value.trim()) { setAuthStatus('This cloud memory is invalid.'); return }
+            setMemoryItems((current) => [...new Set([...current, row.value.trim().slice(0, 240)])].slice(-50))
+            setAuthStatus('Memory restored to this browser.')
+          }}>Add to local memory</button> <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+            if (!window.confirm('Delete this saved cloud memory?')) return
+            try { await deleteCloudMemory(session, row.id); setCloudMemories((current) => current?.filter((item) => item.id !== row.id) ?? null); setAuthStatus('Cloud memory deleted.') }
+            catch { setAuthStatus('Cloud memory deletion failed.') }
+          })}>Delete cloud memory</button></li>)}</ul>}</section>}
+          {authStatus && <p className="small" role="status">{authStatus}</p>}
+        </>
+      ) : (
+        <>
+          <label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="current-password" minLength={8} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>
+          <div className="starters">
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Signed in.') } }
+              catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
+            })}>Sign in</button>
+            <button type="button" disabled={authBusy || !adultAccess} onClick={() => void runAccountAction(async () => {
+              try { const next = await signUp(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Account created and signed in.') } else setAuthStatus('Account created. Check your email if confirmation is required.') }
+              catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Registration failed.') }
+            })}>Create account</button>
+            <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
+              try { await requestPasswordReset(authEmail.trim()); setAuthStatus('If that account exists, recovery instructions have been requested.') }
+              catch { setAuthStatus('Unable to request recovery right now.') }
+            })}>Forgot password</button>
+          </div>
+          {authStatus && <p className="small" role="status">{authStatus}</p>}
+        </>
+      )}
+    </section>
+  )
+
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
@@ -322,12 +657,13 @@ const App = () => {
         in safe preview mode.
       </p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
+      {billing.isConfigured && <p className="small">Review the exact currency, amount and renewal terms on Stripe Checkout before paying. Paid access starts only after Stripe confirms the subscription.</p>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
             <h3>{plan.name}</h3>
             <p>{plan.priceLabel}</p>
-            {plan.proposed && <p className="small">Proposed price (editable via environment config)</p>}
+            {plan.proposed && <p className="small">The exact price is set in Stripe and confirmed before payment.</p>}
             <ul>
               {plan.features.map((feature) => (
                 <li key={feature}>{feature}</li>
@@ -335,14 +671,18 @@ const App = () => {
             </ul>
             <button
               type="button"
-              aria-label={`Choose ${plan.name}`}
+              aria-label={plan.id === 'free' ? 'Current free plan' : `${plan.name} subscription`}
               aria-current={planId === plan.id}
+              disabled={plan.id === 'free' || !billing.isConfigured || !session || authBusy}
               onClick={() => {
-                setPlanId(plan.id)
-                setProjectNotes((current) => applyProjectNotesLimit(current, plan.id))
+                if (!session || plan.id === 'free') return
+                void runAccountAction(async () => {
+                  try { await openBilling(session, planId === 'free' ? 'checkout' : 'portal', plan.id) }
+                  catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Billing is unavailable.') }
+                })
               }}
             >
-              {planId === plan.id ? 'Current plan' : 'Choose plan'}
+              {plan.id === 'free' ? 'Free plan' : !billing.isConfigured ? 'Coming later' : !session ? 'Sign in to subscribe' : planId === 'free' ? 'Review secure checkout' : 'Manage subscription'}
             </button>
           </article>
         ))}
@@ -350,12 +690,14 @@ const App = () => {
       <p className="small">
         Current plan: {planId}. Safety disclosures, privacy controls, and crisis guidance stay available to all plans.
       </p>
+      {authStatus && <p className="warn" role="status">{authStatus}</p>}
     </section>
   )
 
   const renderPrivacy = () => (
     <section className="panel">
       <h2>Privacy Centre</h2>
+      <div className="age-notice"><strong>Adult-only interactive service.</strong> AI Aurora is intended for users aged 18+. Age assurance should collect only the minimum information needed and payment-card possession is not treated as proof of age.</div>
       <ul>
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>Secrets must stay in environment variables, never hard-coded.</li>
@@ -364,15 +706,18 @@ const App = () => {
         <li>AI/database providers may process data per their terms and configuration.</li>
       </ul>
       <p>
-        AI Friendship is not legally privileged communication, not a therapist, and not absolute confidentiality.
+        AI Aurora is not legally privileged communication, not a therapist, and not absolute confidentiality.
       </p>
       <p className="warn">
         Production launch still requires: security review, access controls, logging policy, retention policy, and
         provider data-processing/legal review.
       </p>
-      <button type="button" onClick={clearLocalData}>
-        Delete my local memory + history
-      </button>
+      <div className="account-actions">
+        <button type="button" onClick={() => downloadJson('ai-friendship-data.json', createExportBundle({
+          messages, memory: memoryItems, projectNotes, companionName,
+        }))}>Export my local data</button>
+        <button type="button" onClick={clearLocalData}>Delete my local memory + history</button>
+      </div>
     </section>
   )
 
@@ -411,10 +756,38 @@ const App = () => {
     </section>
   )
 
+  const renderAdultGate = () => (
+    <section className="panel adult-gate-page" aria-labelledby="adult-gate-title">
+      <p className="eyebrow">ADULT ACCESS</p>
+      <h1 id="adult-gate-title">AI Aurora is an 18+ interactive experience.</h1>
+      <p>You must be 18 or over to use Aurora's chat, memory, history, account, settings or immersive companion features.</p>
+      <p className="small">Aurora is an adult AI persona with a 25+ presentation. Payment-card possession is not treated as proof of age.</p>
+      <div className="hero-actions">
+        <button type="button" onClick={() => setAdultAccess(true)}>I confirm I am 18 or over</button>
+        <a className="secondary-cta" href="#/">Return home</a>
+      </div>
+      <p className="small">This confirmation opens the browser preview on this device. It does not verify age for a live account or unlock live AI. After confirming, accept the chat disclosure to send a preview message.</p>
+    </section>
+  )
+
   let page = renderHome()
-  switch (route) {
+  if (routeRequiresAdultGate(route) && !adultAccess) {
+    page = renderAdultGate()
+  } else switch (route) {
     case '/chat':
       page = renderChat()
+      break
+    case '/history':
+      page = renderHistory()
+      break
+    case '/memory':
+      page = renderMemory()
+      break
+    case '/settings':
+      page = renderSettings()
+      break
+    case '/account':
+      page = renderAccount()
       break
     case '/pricing':
       page = renderPricing()
@@ -433,10 +806,14 @@ const App = () => {
   return (
     <div className="shell">
       <header>
-        <h1>AI Friendship V1+</h1>
+        <a className="brand" href="#/" aria-label="AI Aurora home"><span className="brand-mark">A</span><span>AI <strong>AURORA</strong></span></a>
         <nav>
           <a href="#/">Home</a>
           <a href="#/chat">Chat</a>
+          <a href="#/history">History</a>
+          <a href="#/memory">Memory</a>
+          <a href="#/settings">Settings</a>
+          <a href="#/account">Account</a>
           <a href="#/pricing">Pricing</a>
           <a href="#/privacy">Privacy</a>
           <a href="#/immersive">Immersive</a>
@@ -444,7 +821,7 @@ const App = () => {
       </header>
       <main>{page}</main>
       <footer>
-        AI companion for reflection and creativity. Not human. Not therapy. Not emergency support.
+        AI Aurora is an AI companion for conversation and creativity. Not human. Not therapy. Not emergency support.
       </footer>
     </div>
   )
