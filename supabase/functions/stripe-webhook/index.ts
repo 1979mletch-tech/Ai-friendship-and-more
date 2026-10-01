@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
     return new Response('ok')
   }
 
+  const periodEnd = typeof subscription.current_period_end === 'number'
+    ? new Date(subscription.current_period_end * 1000).toISOString()
+    : null
   const { error } = await admin.from('billing_subscriptions').upsert({
     user_id: userId,
     stripe_customer_id: subscription.customer,
@@ -58,6 +61,8 @@ Deno.serve(async (req) => {
     plan,
     status: subscription.status,
     livemode: subscription.livemode === true,
+    cancel_at_period_end: subscription.cancel_at_period_end === true,
+    current_period_end: periodEnd,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' })
   if (error) return new Response('Could not save subscription', { status: 503 })
