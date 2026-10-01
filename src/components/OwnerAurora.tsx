@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AuroraFigure } from './AuroraFigure'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
-import { getOwnerAuroraAccess, sendOwnerAuroraChat } from '../services/ownerAuroraService'
+import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '../services/ownerAuroraService'
 import { loadSession, type AuthSession } from '../services/authService'
 import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
 
@@ -19,11 +19,20 @@ const quickPrompts = [
   'Help me plan the next AI Doctor work session.',
   'Give me a concise end-of-day project review.',
 ]
+const readinessLabels: Record<keyof OwnerReadiness, string> = {
+  ai: 'Real AI',
+  speech: 'Aurora voice',
+  billing: 'Live billing',
+  webhook: 'Stripe webhook',
+  ageVerification: 'Adult verification',
+  returnUrl: 'Return routing',
+}
 
 export function OwnerAurora() {
   const [session, setSession] = useState<AuthSession | null>(() => loadSession())
   const [allowed, setAllowed] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [readiness, setReadiness] = useState<OwnerReadiness | null>(null)
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -37,6 +46,7 @@ export function OwnerAurora() {
     () => [...messages].reverse().find((message) => message.role === 'assistant')?.text || '',
     [messages],
   )
+  const readinessComplete = readiness ? Object.values(readiness).every(Boolean) : false
 
   useEffect(() => {
     const sync = (next?: AuthSession | null) => setSession(next === undefined ? loadSession() : next)
@@ -50,18 +60,31 @@ export function OwnerAurora() {
     }
   }, [])
 
+  const refreshOwnerStatus = async (activeSession: AuthSession, active = true) => {
+    setChecking(true)
+    try {
+      const result = await getOwnerAuroraStatus(activeSession)
+      if (!active) return
+      setAllowed(result.owner)
+      setReadiness(result.readiness ?? null)
+    } catch {
+      if (!active) return
+      setAllowed(false)
+      setReadiness(null)
+    } finally {
+      if (active) setChecking(false)
+    }
+  }
+
   useEffect(() => {
     let active = true
     setAllowed(false)
+    setReadiness(null)
     setOpen(false)
     if (!session) return () => { active = false }
     setMessages(safeLocalStorageGet(ownerKey('messages', session), []))
     setNotes(safeLocalStorageGet(ownerKey('notes', session), []))
-    setChecking(true)
-    void getOwnerAuroraAccess(session)
-      .then((result) => { if (active) setAllowed(result) })
-      .catch(() => { if (active) setAllowed(false) })
-      .finally(() => { if (active) setChecking(false) })
+    void refreshOwnerStatus(session, active)
     return () => { active = false }
   }, [session?.user.id])
 
@@ -106,9 +129,11 @@ export function OwnerAurora() {
     setStatus('Preparing Aurora’s voice…')
     try {
       const blob = await generateAuroraSpeech(session, latestReply)
-      const audio = new Audio(URL.createObjectURL(blob))
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => setStatus('')
+      audio.onended = () => { URL.revokeObjectURL(url); setStatus('') }
+      audio.onerror = () => { URL.revokeObjectURL(url); setStatus('Audio could not play on this device.') }
       await audio.play()
       setStatus('')
     } catch (error) {
@@ -140,6 +165,22 @@ export function OwnerAurora() {
           </header>
 
           <p className="owner-aurora-boundary">Private to your authorised owner account. Owner Aurora does not read customer conversations or customer private data.</p>
+
+          {readiness && (
+            <section className={`owner-readiness ${readinessComplete ? 'owner-readiness-ready' : ''}`} aria-label="Launch readiness">
+              <div className="owner-readiness-head">
+                <strong>{readinessComplete ? 'Launch services configured' : 'Launch services need attention'}</strong>
+                <button type="button" onClick={() => session && void refreshOwnerStatus(session)}>Refresh</button>
+              </div>
+              <div className="owner-readiness-grid">
+                {(Object.keys(readinessLabels) as (keyof OwnerReadiness)[]).map((key) => (
+                  <span key={key} className={readiness[key] ? 'ready' : 'blocked'}>
+                    <b aria-hidden="true">{readiness[key] ? '✓' : '!'}</b> {readinessLabels[key]}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="owner-aurora-prompts" aria-label="Owner Aurora quick prompts">
             {quickPrompts.map((prompt) => <button key={prompt} type="button" disabled={busy} onClick={() => void send(prompt)}>{prompt}</button>)}
