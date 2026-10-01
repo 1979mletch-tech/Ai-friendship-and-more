@@ -95,7 +95,6 @@ export function AuroraPresence({
   const [speechPulse, setSpeechPulse] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
   const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
-  const [gaze, setGaze] = useState<'center' | 'left' | 'right'>('center')
   const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
@@ -189,38 +188,6 @@ export function AuroraPresence({
   useEffect(() => {
     savePresenceSetting(presenceKey, { scene, autoFollow })
   }, [presenceKey, scene, autoFollow])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-    let timer = 0
-    let direction: 'left' | 'right' = 'left'
-    const scheduleGaze = () => {
-      if (reducedMotion.matches) {
-        setGaze('center')
-        return
-      }
-      timer = window.setTimeout(() => {
-        setGaze((current) => {
-          if (current !== 'center') return 'center'
-          direction = direction === 'left' ? 'right' : 'left'
-          return direction
-        })
-        scheduleGaze()
-      }, 4800 + Math.floor(Math.random() * 5200))
-    }
-    const handleMotionPreference = () => {
-      window.clearTimeout(timer)
-      setGaze('center')
-      scheduleGaze()
-    }
-    reducedMotion.addEventListener?.('change', handleMotionPreference)
-    scheduleGaze()
-    return () => {
-      window.clearTimeout(timer)
-      reducedMotion.removeEventListener?.('change', handleMotionPreference)
-    }
-  }, [])
 
   useEffect(() => {
     const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
@@ -320,7 +287,6 @@ export function AuroraPresence({
       data-daypart={daypart}
       data-reaction={reaction}
       data-engagement={engagement}
-      data-gaze={gaze}
       style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3), '--aurora-speech-pulse': speechPulse.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
