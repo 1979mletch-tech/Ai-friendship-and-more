@@ -60,6 +60,7 @@ export function AuroraFigure() {
           <image href={portrait} x="56" y="13" width="108" height="124" preserveAspectRatio="xMidYMid slice" clipPath="url(#auroraFaceClip)" />
           <path className="aurora-hair-left" d="M58 73 Q50 132 76 146 Q67 107 74 79Z" fill="#211d2c" opacity=".92" />
           <path className="aurora-hair-right" d="M162 73 Q170 132 144 146 Q153 107 146 79Z" fill="#211d2c" opacity=".92" />
+          <g className="aurora-eye-detail" aria-hidden="true"><circle className="aurora-pupil aurora-pupil-left" cx="91" cy="73" r="1.8" fill="#30242b" /><circle className="aurora-pupil aurora-pupil-right" cx="129" cy="73" r="1.8" fill="#30242b" /></g>
           <path className="aurora-rig-blink" d="M82 73 Q91 77 100 73 M120 73 Q129 77 138 73" fill="none" stroke="#3a2930" strokeWidth="3" strokeLinecap="round" />
           <ellipse className="aurora-cheek aurora-cheek-left" cx="83" cy="91" rx="9" ry="5" fill="rgba(216,113,126,.12)" />
           <ellipse className="aurora-cheek aurora-cheek-right" cx="137" cy="91" rx="9" ry="5" fill="rgba(216,113,126,.12)" />
