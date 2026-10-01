@@ -1,41 +1,52 @@
 import type { Entitlements, Plan, PlanId } from '../types/subscription'
 
+const paidFeatures = [
+  'Up to 250 AI messages/day',
+  'Expanded project memory and tags',
+  'Longer conversation history',
+  'Aurora generated voice access',
+]
+
 export const plans: Plan[] = [
   {
     id: 'free',
-    name: 'Free Friend',
-    priceLabel: '$0',
+    name: 'Try Aurora',
+    priceLabel: 'First 10 messages free',
     proposed: false,
     features: [
-      'Up to 25 messages/day',
+      'First 10 AI messages free',
       'Basic memory and conversation history',
-      'General + creative topic starters',
-      'Safety, privacy controls, and crisis guidance included',
+      'General and creative topic starters',
+      'Safety and privacy controls included',
     ],
+  },
+  {
+    id: 'pro-daily',
+    name: 'Aurora Daily',
+    priceLabel: '£4 / day',
+    proposed: false,
+    features: paidFeatures,
+  },
+  {
+    id: 'pro-weekly',
+    name: 'Aurora Weekly',
+    priceLabel: '£12 / week',
+    proposed: false,
+    features: paidFeatures,
   },
   {
     id: 'pro-monthly',
-    name: 'Studio Friend Pro',
-    priceLabel: 'Monthly price shown before payment',
-    proposed: true,
-    features: [
-      'Higher daily usage cap',
-      'Richer creative project memory and tags',
-      'Longer history and project continuity',
-      'Deeper personalization and creative prompts',
-    ],
+    name: 'Aurora Monthly',
+    priceLabel: '£20 / month',
+    proposed: false,
+    features: paidFeatures,
   },
   {
     id: 'pro-annual',
-    name: 'Studio Friend Annual',
-    priceLabel: 'Annual price shown before payment',
-    proposed: true,
-    features: [
-      'Everything in Pro monthly',
-      'Annual pricing discount',
-      'Creative weekly reviews and idea sparks',
-      'Priority for future immersive upgrades',
-    ],
+    name: 'Aurora Annual',
+    priceLabel: '£90 / year',
+    proposed: false,
+    features: [...paidFeatures, 'Annual access'],
   },
 ]
 
@@ -48,7 +59,7 @@ export const getEntitlements = (planId: PlanId): Entitlements => {
       canUseLongHistory: false,
       canUseAdvancedPersonalization: false,
       usageLimits: {
-        dailyMessages: 25,
+        dailyMessages: 10,
         basicHistoryDays: 7,
         projectNotesLimit: 3,
       },
