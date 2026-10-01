@@ -19,6 +19,11 @@ const trustedStripeIdentityUrl = (value: unknown) => {
     return false
   }
 }
+const markedReturnUrl = (base: string) => {
+  const url = new URL(base)
+  url.searchParams.set('return', 'age-return')
+  return url.toString()
+}
 
 Deno.serve(async (req) => {
   if (!allowedOrigin || req.headers.get('Origin') !== allowedOrigin) return json({ error: 'Origin not allowed' }, 403)
@@ -51,7 +56,7 @@ Deno.serve(async (req) => {
     const form = new URLSearchParams({
       type: 'document',
       client_reference_id: user.id,
-      return_url: returnUrl,
+      return_url: markedReturnUrl(returnUrl),
       'options[document][require_live_capture]': 'true',
     })
     const response = await fetch('https://api.stripe.com/v1/identity/verification_sessions', {
@@ -74,16 +79,13 @@ Deno.serve(async (req) => {
     const result = await response.json()
     if (result.client_reference_id !== user.id) return json({ error: 'Verification does not belong to this account' }, 403)
     if (result.status !== 'verified') return json({ verified: false, status: result.status })
-    if (result.livemode !== true || !stripeKey.startsWith('sk_live_')) {
-      return json({ verified: false, status: 'test-mode' })
-    }
+    if (result.livemode !== true || !stripeKey.startsWith('sk_live_')) return json({ verified: false, status: 'test-mode' })
     const details = await fetch(`https://api.stripe.com/v1/identity/verification_sessions/${body.sessionId}?expand%5B%5D=verified_outputs.dob`, {
       headers: { Authorization: `Bearer ${dobKey}` },
     }).catch(() => null)
     if (!details?.ok) return json({ error: 'Could not confirm age' }, 503)
     const verifiedSession = await details.json()
-    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified' ||
-        verifiedSession.client_reference_id !== user.id || verifiedSession.livemode !== true) {
+    if (verifiedSession.id !== result.id || verifiedSession.status !== 'verified' || verifiedSession.client_reference_id !== user.id || verifiedSession.livemode !== true) {
       return json({ error: 'Verification changed' }, 409)
     }
     if (!isAdultDob(verifiedSession.verified_outputs?.dob)) return json({ verified: false, status: 'not-eligible' })
