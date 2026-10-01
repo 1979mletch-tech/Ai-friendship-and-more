@@ -32,10 +32,13 @@ const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
 
 const reactionCopy: Record<AuroraReaction, string> = {
   neutral: 'Present',
+  warm: 'Warmly with you',
+  amused: 'Sharing the smile',
   celebrate: 'Celebrating with you',
   encourage: 'Encouraging you',
   calm: 'Keeping things calm',
   focus: 'Focused with you',
+  concerned: 'Listening closely',
 }
 
 const momentStarters: Array<{ label: string; scene: AuroraScene; prompt: string }> = [
@@ -88,6 +91,7 @@ export function AuroraPresence({
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
+  const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
   const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
@@ -185,6 +189,8 @@ export function AuroraPresence({
       const text = (event as CustomEvent<string>).detail
       if (typeof text !== 'string') return
       setReaction(inferAuroraReaction(text))
+      setEngagement('engaged')
+      window.setTimeout(() => setEngagement('idle'), 6500)
       if (!autoFollow) return
       const nextScene = inferAuroraScene(text)
       if (nextScene) setScene(nextScene)
@@ -264,6 +270,7 @@ export function AuroraPresence({
       data-scene={scene}
       data-daypart={daypart}
       data-reaction={reaction}
+      data-engagement={engagement}
       style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
