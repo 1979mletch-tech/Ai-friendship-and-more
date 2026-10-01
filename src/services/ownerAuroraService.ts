@@ -3,6 +3,20 @@ import { ensureFreshSession, type AuthSession } from './authService'
 
 type OwnerMessage = { role: 'user' | 'assistant'; text: string }
 
+export type OwnerReadiness = {
+  ai: boolean
+  speech: boolean
+  billing: boolean
+  webhook: boolean
+  ageVerification: boolean
+  returnUrl: boolean
+}
+
+export type OwnerStatus = {
+  owner: boolean
+  readiness?: OwnerReadiness
+}
+
 const request = async (session: AuthSession, body: object) => {
   const config = readCloudConfig()
   if (!config.supabaseUrl || !config.supabaseAnonKey) throw new Error('Owner Aurora is not configured.')
@@ -24,10 +38,16 @@ const request = async (session: AuthSession, body: object) => {
   return payload
 }
 
-export const getOwnerAuroraAccess = async (session: AuthSession): Promise<boolean> => {
+export const getOwnerAuroraStatus = async (session: AuthSession): Promise<OwnerStatus> => {
   const result = await request(session, { action: 'status' })
-  return result?.owner === true
+  return {
+    owner: result?.owner === true,
+    readiness: result?.readiness && typeof result.readiness === 'object' ? result.readiness as OwnerReadiness : undefined,
+  }
 }
+
+export const getOwnerAuroraAccess = async (session: AuthSession): Promise<boolean> =>
+  (await getOwnerAuroraStatus(session)).owner
 
 export const sendOwnerAuroraChat = async (
   session: AuthSession,
