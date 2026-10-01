@@ -79,12 +79,19 @@ Deno.serve(async (req) => {
     ? [...new Set(body.notes.map((item: unknown) => clean(item, 280)).filter(Boolean))].slice(-12)
     : []
   const allowedProjectIds = new Set(['ai-friendship', 'ai-doctor'])
+  const allowedProjectStatuses = new Set(['active', 'next', 'paused'])
+  const seenProjectIds = new Set<string>()
   const projects = Array.isArray(body.projects)
-    ? body.projects.slice(0, 2).flatMap((item: any) => {
+    ? body.projects.flatMap((item: any) => {
         const id = clean(item?.id, 40)
-        if (!allowedProjectIds.has(id)) return []
-        return [{ id, name: clean(item?.name, 80), status: clean(item?.status, 20), summary: clean(item?.summary, 500) }]
-      })
+        if (!allowedProjectIds.has(id) || seenProjectIds.has(id)) return []
+        const name = clean(item?.name, 80)
+        if (!name) return []
+        seenProjectIds.add(id)
+        const requestedStatus = clean(item?.status, 20)
+        const status = allowedProjectStatuses.has(requestedStatus) ? requestedStatus : 'paused'
+        return [{ id, name, status, summary: clean(item?.summary, 500) }]
+      }).slice(0, 2)
     : []
 
   const key = Deno.env.get('OPENAI_API_KEY') || ''
