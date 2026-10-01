@@ -24,3 +24,6 @@
 .aurora-presence[data-gaze="right"] .aurora-eye-detail{transform:translateX(1.5px)}
 .aurora-motion-listening .aurora-eye-detail,.aurora-motion-speaking .aurora-eye-detail{transform:translateX(0)}
 .aurora-pupil{opacity:.72}
+
+.aurora-motion-speaking .aurora-rig-head{transform:translateY(calc(var(--aurora-speech-pulse,0)*-1.5px))}
+.aurora-motion-speaking .aurora-rig-torso{transform-box:fill-box;transform-origin:center 60%;transform:scaleY(calc(1 + var(--aurora-speech-pulse,0)*.002))}
