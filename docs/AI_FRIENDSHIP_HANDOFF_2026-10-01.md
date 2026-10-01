@@ -25,6 +25,21 @@ Production speech uses OpenAI `gpt-4o-mini-tts` with voice `marin`. It is an app
 
 Supabase `speak` Edge Function is ACTIVE at version 2 with the final Aurora prompt.
 
+## Animated Aurora requirement
+
+Aurora is intended to become an **animated on-screen companion**, not remain a static portrait.
+
+Keep this as an explicit product requirement:
+- natural idle movement while she is present
+- walking/moving around the scene rather than staying fixed in one position
+- pose and position changes that feel calm and human-like
+- simple entering/leaving or moving-between-areas behaviour where appropriate
+- expression/body-language changes that can later react to conversation tone
+- future lip-sync / speech-linked facial movement when technically practical
+- preserve the non-headset browser fallback while allowing future WebXR/VR expansion
+
+This movement layer is a retained roadmap requirement and must not be dropped when the project resumes. The current repository should not be described as having a fully verified walking/animated Aurora until that end-to-end avatar motion is actually implemented and tested.
+
 ## Supabase security-advisor review
 
 The current advisor reports:
@@ -66,4 +81,4 @@ Before public launch:
 
 ## Parked-state verdict
 
-AI Friendship is **organised and safely parked as a release candidate**, with the full current product consolidated on `main` and Aurora's final voice direction recorded and deployed server-side. It is **not yet being represented as fully launch-verified** because the remaining items above require exact live deployment and credentialed end-to-end checks.
+AI Friendship is **organised and safely parked as a release candidate**, with the full current product consolidated on `main` and Aurora's final voice direction recorded and deployed server-side. The animated walking/movement requirement is also explicitly retained for the next build phase. It is **not yet being represented as fully launch-verified** because the remaining items above require exact live deployment and credentialed end-to-end checks.
