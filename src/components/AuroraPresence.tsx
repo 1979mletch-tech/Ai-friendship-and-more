@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { AuthSession } from '../services/authService'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
+import { AuroraFigure } from './AuroraFigure'
 import '../auroraMotion.css'
 
 const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. I'm here with you. What's on your mind today?"
@@ -53,8 +54,9 @@ export function AuroraPresence({
   const [voiceStatus, setVoiceStatus] = useState('')
   const [scene, setScene] = useState<AuroraScene>('together')
   const [voiceEnergy, setVoiceEnergy] = useState(0)
+  const [externalAiBusy, setExternalAiBusy] = useState(false)
   const available = speechAvailable() && Boolean(session)
-  const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || loading ? 'thinking' : scene
+  const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
   const recognitionType = typeof window !== 'undefined'
     ? (window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }).SpeechRecognition
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
@@ -102,6 +104,12 @@ export function AuroraPresence({
     setSpeaking(false)
     setLoading(false)
   }
+
+  useEffect(() => {
+    const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
+    window.addEventListener('aurora-ai-busy', handleAiBusy)
+    return () => window.removeEventListener('aurora-ai-busy', handleAiBusy)
+  }, [])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
@@ -180,24 +188,12 @@ export function AuroraPresence({
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
         <div className="aurora-sky" aria-hidden="true" />
+        <div className="aurora-horizon" aria-hidden="true" />
         <div className="aurora-path" aria-hidden="true" />
         <div className="aurora-exercise-mat" aria-hidden="true" />
-        <div className="aurora-bed" aria-hidden="true"><span className="aurora-pillow" /></div>
-        <div className="aurora-character" aria-hidden="true">
-          <div className="aurora-portrait-frame">
-            <img src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="" />
-            <span className="aurora-blink" />
-            <span className="aurora-mouth" />
-            <span className="aurora-motion-glow" />
-          </div>
-          <div className="aurora-body-shell">
-            <span className="aurora-torso" />
-            <span className="aurora-arm aurora-arm-left" />
-            <span className="aurora-arm aurora-arm-right" />
-            <span className="aurora-leg aurora-leg-left" />
-            <span className="aurora-leg aurora-leg-right" />
-          </div>
-        </div>
+        <div className="aurora-chair" aria-hidden="true" />
+        <div className="aurora-bed" aria-hidden="true"><span className="aurora-pillow" /><span className="aurora-blanket" /></div>
+        <div className="aurora-character"><AuroraFigure /></div>
         <div className="aurora-world-status" aria-live="polite">{sceneCopy[scene].status}</div>
       </div>
 
