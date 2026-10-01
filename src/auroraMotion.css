@@ -18,3 +18,9 @@
 .aurora-presence[data-reaction="amused"] .aurora-rig-mouth,.aurora-presence[data-reaction="warm"] .aurora-rig-mouth,.aurora-presence[data-reaction="celebrate"] .aurora-rig-mouth{transform:scaleX(1.12) scaleY(calc(1 + var(--aurora-voice-energy,0)*3))}
 .aurora-motion-listening .aurora-rig{animation-duration:6.8s}
 .aurora-motion-thinking .aurora-rig{animation-duration:6.3s}
+
+.aurora-eye-detail{transition:transform .7s cubic-bezier(.2,.7,.2,1);transform-origin:center}
+.aurora-presence[data-gaze="left"] .aurora-eye-detail{transform:translateX(-1.5px)}
+.aurora-presence[data-gaze="right"] .aurora-eye-detail{transform:translateX(1.5px)}
+.aurora-motion-listening .aurora-eye-detail,.aurora-motion-speaking .aurora-eye-detail{transform:translateX(0)}
+.aurora-pupil{opacity:.72}
