@@ -117,8 +117,8 @@ Supabase Auth and trusted `app_metadata.adult_verified`, then reserves one reque
 the existing per-user daily/minute quota. Set `OPENAI_API_KEY` and `ALLOWED_ORIGIN`
 server-side, deploy the function, verify an adult test account and only then set
 `VITE_AURORA_SPEECH_ENABLED=true` for the site build. The API key must never be
-published in a `VITE_*` variable. The preview uses OpenAI `gpt-4o-mini-tts` voice
-`marin` with a light Latin American Spanish accent instruction. This is a starting
-voice, not an approved final casting. Test on Android and iPad before enabling it
-for public use. Audio is AI generated and text is sent to the speech provider only
-when the user presses Play; each playback consumes a quota unit.
+published in a `VITE_*` variable.
+
+Aurora's approved reference direction is **Karen + Gentle + en-PL** from the device preview: calm, soft, feminine, warm, relaxed and slightly dreamy. The production speech path does not clone Apple's Karen voice. It uses OpenAI `gpt-4o-mini-tts` voice `marin` and aims to reproduce the approved feel with English spoken in a gentle, subtle Polish accent. Test the generated result on iPad and Android before enabling it for public use.
+
+Audio is AI generated and text is sent to the speech provider only when the user presses Play; each playback consumes a quota unit.
