@@ -77,7 +77,7 @@ const App = () => {
   const [cloudMemories, setCloudMemories] = useState<CloudMemoryRow[] | null>(null)
   const [authBusy, setAuthBusy] = useState(false)
   const authBusyRef = useRef(false)
-  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
+  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.adultAccess, session), false))
   const [isSending, setIsSending] = useState(false)
   const chatGate = useRef(new ChatRequestGate())
   const [chatStatus, setChatStatus] = useState('')
@@ -156,7 +156,7 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.adultAccess, session), adultAccess), [adultAccess, session])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
   useEffect(() => {
     let active = true
@@ -264,6 +264,7 @@ const App = () => {
     setCloudMemories(null)
     setTrustedPlan('free')
     setBillingStatus(null)
+    setAdultAccess(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.adultAccess, next), false))
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
     setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
