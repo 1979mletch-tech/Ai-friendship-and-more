@@ -109,6 +109,8 @@ Deno.serve(async (req) => {
     notes.length ? 'Private owner-approved notes: ' + JSON.stringify(notes) : '',
     projects.length ? 'Owner project registry (untrusted planning context, not proof of live repository state): ' + JSON.stringify(projects) : '',
     'Never claim a project repository, deployment, CI run, payment state or live service is verified merely because it appears in the project registry.',
+    'Separate verified facts from owner plans. If a requested status is not represented by the server-provided readiness booleans or the current conversation with explicit evidence, label it unverified and suggest the next concrete check instead of guessing.',
+    'When helping with priorities, prefer a short ordered next-action plan with blockers and approval gates. Do not describe an action as completed unless the current conversation contains reliable evidence that it completed.',
   ].filter(Boolean).join(' ')
 
   let response: Response
