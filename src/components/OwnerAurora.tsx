@@ -40,6 +40,10 @@ export function OwnerAurora() {
   const [projects, setProjects] = useState<OwnerProject[]>(defaultOwnerProjects)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string | null>(null)
+  const sessionUserIdRef = useRef(session?.user.id ?? null)
+  const requestIdRef = useRef(0)
+  const voiceRequestIdRef = useRef(0)
+  const statusRequestIdRef = useRef(0)
 
   const latestReply = useMemo(
     () => [...messages].reverse().find((message) => message.role === 'assistant')?.text || '',
@@ -60,23 +64,32 @@ export function OwnerAurora() {
   }, [])
 
   const refreshOwnerStatus = async (activeSession: AuthSession, active = true) => {
+    const requestId = ++statusRequestIdRef.current
+    const userId = activeSession.user.id
     setChecking(true)
     try {
       const result = await getOwnerAuroraStatus(activeSession)
-      if (!active) return
+      if (!active || requestId !== statusRequestIdRef.current || sessionUserIdRef.current !== userId) return
       setAllowed(result.owner)
       setReadiness(result.readiness ?? null)
     } catch {
-      if (!active) return
+      if (!active || requestId !== statusRequestIdRef.current || sessionUserIdRef.current !== userId) return
       setAllowed(false)
       setReadiness(null)
     } finally {
-      if (active) setChecking(false)
+      if (active && requestId === statusRequestIdRef.current && sessionUserIdRef.current === userId) setChecking(false)
     }
   }
 
   useEffect(() => {
     let active = true
+    sessionUserIdRef.current = session?.user.id ?? null
+    requestIdRef.current += 1
+    voiceRequestIdRef.current += 1
+    statusRequestIdRef.current += 1
+    setBusy(false)
+    setChecking(false)
+    setStatus('')
     setAllowed(false)
     setReadiness(null)
     setOpen(false)
@@ -105,6 +118,8 @@ export function OwnerAurora() {
     if (!session || !allowed || busy) return
     const text = (seed ?? input).trim().slice(0, 1800)
     if (!text) return
+    const requestId = ++requestIdRef.current
+    const userId = session.user.id
     const userMessage: OwnerMessage = { id: crypto.randomUUID(), role: 'user', text, createdAt: new Date().toISOString() }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -118,18 +133,20 @@ export function OwnerAurora() {
         notes,
         projects,
       )
+      if (requestId !== requestIdRef.current || sessionUserIdRef.current !== userId) return
       setMessages((current) => [...current, {
         id: crypto.randomUUID(), role: 'assistant', text: reply, createdAt: new Date().toISOString(),
       }])
       setStatus('')
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Owner Aurora is unavailable.')
+      if (requestId === requestIdRef.current && sessionUserIdRef.current === userId) setStatus(error instanceof Error ? error.message : 'Owner Aurora is unavailable.')
     } finally {
-      setBusy(false)
+      if (requestId === requestIdRef.current && sessionUserIdRef.current === userId) setBusy(false)
     }
   }
 
   const stopOwnerVoice = () => {
+    voiceRequestIdRef.current += 1
     audioRef.current?.pause()
     audioRef.current = null
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
@@ -141,19 +158,22 @@ export function OwnerAurora() {
   const speakLatest = async () => {
     if (!session || !latestReply || !speechAvailable()) return
     stopOwnerVoice()
+    const requestId = voiceRequestIdRef.current
+    const userId = session.user.id
     setStatus('Preparing Aurora’s voice…')
     try {
       const blob = await generateAuroraSpeech(session, latestReply)
+      if (requestId !== voiceRequestIdRef.current || sessionUserIdRef.current !== userId) return
       const url = URL.createObjectURL(blob)
       audioUrlRef.current = url
       const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => { stopOwnerVoice(); setStatus('') }
-      audio.onerror = () => { stopOwnerVoice(); setStatus('Audio could not play on this device.') }
+      audio.onended = () => { if (requestId === voiceRequestIdRef.current) { stopOwnerVoice(); setStatus('') } }
+      audio.onerror = () => { if (requestId === voiceRequestIdRef.current) { stopOwnerVoice(); setStatus('Audio could not play on this device.') } }
       await audio.play()
-      setStatus('')
+      if (requestId === voiceRequestIdRef.current && sessionUserIdRef.current === userId) setStatus('')
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
+      if (requestId === voiceRequestIdRef.current && sessionUserIdRef.current === userId) setStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
     }
   }
 
