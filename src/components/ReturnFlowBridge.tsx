@@ -21,7 +21,7 @@ export function ReturnFlowBridge() {
     const run = async () => {
       const session = loadSession()
       if (!session) {
-        if (!stillSameAccount()) return
+        if (!active) return
         setState('error')
         setMessage('Sign in again to finish this account step.')
         return
@@ -40,7 +40,6 @@ export function ReturnFlowBridge() {
         return
       }
 
-      const sessionStillActive = () => loadSession()?.user.id === session.user.id
 
       if (flow.kind === 'age-return') {
         if (!hasPendingAgeVerification(session)) {
@@ -53,11 +52,11 @@ export function ReturnFlowBridge() {
         }
         try {
           const result = await finishAgeVerification(session)
-          if (!active || !sessionStillActive()) return
+          if (!stillSameAccount()) return
           if (result.verified) {
             try {
               const fresh = await refreshSession(session)
-              if (!active || !sessionStillActive() || fresh.user.id !== session.user.id) return
+              if (!stillSameAccount() || fresh.user.id !== userId) return
               saveSession(fresh)
             } catch {
               // The server-side adult flag is already saved; a later auth refresh can pick it up.
@@ -89,7 +88,7 @@ export function ReturnFlowBridge() {
           if (!stillSameAccount()) return
           try {
             const plan = await getBillingPlan(session)
-            if (!active || !sessionStillActive()) return
+            if (!stillSameAccount()) return
             if (plan !== 'free') {
               clearReturnFlowFromUrl()
               if (!stillSameAccount()) return
