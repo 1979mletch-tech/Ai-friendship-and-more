@@ -15,6 +15,13 @@ describe('local account data scope', () => {
     expect(localAccountKey(key, identity('alice'))).not.toBe(key)
   })
 
+  it('isolates adult preview acknowledgement between signed-in accounts', () => {
+    const key = 'ai_aurora_adult_access'
+    expect(localAccountKey(key, identity('alice'))).toBe('ai_aurora_adult_access:account:alice')
+    expect(localAccountKey(key, identity('bob'))).toBe('ai_aurora_adult_access:account:bob')
+    expect(localAccountKey(key, identity('alice'))).not.toBe(localAccountKey(key, identity('bob')))
+  })
+
   it('limits deletion to the active identity', () => {
     expect(accountDataKeys(identity('alice'))).not.toContain('ai_friendship_messages')
     expect(accountDataKeys(identity('alice'))).not.toEqual(accountDataKeys(identity('bob')))
