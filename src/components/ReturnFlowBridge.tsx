@@ -21,16 +21,19 @@ export function ReturnFlowBridge() {
     const run = async () => {
       const session = loadSession()
       if (!session) {
-        if (!active) return
+        if (!stillSameAccount()) return
         setState('error')
         setMessage('Sign in again to finish this account step.')
         return
       }
 
+      const userId = session.user.id
+      const stillSameAccount = () => active && loadSession()?.user.id === userId
+
       setState('working')
       if (flow.kind === 'billing-cancel') {
         clearReturnFlowFromUrl()
-        if (!active) return
+        if (!stillSameAccount()) return
         setState('cancelled')
         setMessage('Checkout was cancelled. No plan change was made.')
         window.location.hash = '/pricing'
@@ -42,7 +45,7 @@ export function ReturnFlowBridge() {
       if (flow.kind === 'age-return') {
         if (!hasPendingAgeVerification(session)) {
           clearReturnFlowFromUrl()
-          if (!active) return
+          if (!stillSameAccount()) return
           setState('pending')
           setMessage('No pending age check was found on this device. You can start or check verification from Account.')
           window.location.hash = '/account'
@@ -72,7 +75,7 @@ export function ReturnFlowBridge() {
             : 'Verification is still processing. Use Retry status in a moment.')
           return
         } catch (error) {
-          if (!active) return
+          if (!stillSameAccount()) return
           setState('error')
           setMessage(error instanceof Error ? error.message : 'Could not finish age verification.')
           return
@@ -83,13 +86,13 @@ export function ReturnFlowBridge() {
         const delays = flow.kind === 'billing-success' ? [0, 700, 1400, 2500, 4000] : [0, 900]
         for (const delay of delays) {
           if (delay) await wait(delay)
-          if (!active) return
+          if (!stillSameAccount()) return
           try {
             const plan = await getBillingPlan(session)
             if (!active || !sessionStillActive()) return
             if (plan !== 'free') {
               clearReturnFlowFromUrl()
-              if (!active) return
+              if (!stillSameAccount()) return
               setState('success')
               setMessage(`Paid access is active (${plan.replace('pro-', '')}). Aurora is ready.`)
               window.location.hash = flow.kind === 'billing-success' ? '/chat' : '/pricing'
@@ -104,7 +107,7 @@ export function ReturnFlowBridge() {
             }
           }
         }
-        if (!active) return
+        if (!stillSameAccount()) return
         setState('pending')
         setMessage(flow.kind === 'billing-success'
           ? 'Stripe returned successfully, but paid access is still waiting for server confirmation. Retry status shortly.'
