@@ -24,6 +24,7 @@ describe('local account data scope', () => {
     const keys = accountDeletionKeys(identity('alice'))
     expect(keys).toContain('ai_friendship_consent:account:alice')
     expect(keys).toContain('ai_friendship_companion_name:account:alice')
+    expect(keys).toContain('ai_aurora_adult_access:account:alice')
     expect(keys).not.toContain('ai_friendship_consent')
   })
 })
