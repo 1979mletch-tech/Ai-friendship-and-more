@@ -52,8 +52,8 @@ export const sendCloudChat = async (
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || 'The live AI service is unavailable.')
-    if (typeof payload?.reply !== 'string') throw new Error('The live AI service returned an invalid response.')
-    return payload
+    if (typeof payload?.reply !== 'string' || !payload.reply.trim()) throw new Error('The live AI service returned an invalid response.')
+    return { ...payload, reply: payload.reply.trim() }
   } finally {
     signalAuroraThinking(false)
   }
