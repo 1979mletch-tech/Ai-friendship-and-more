@@ -3,6 +3,8 @@ export type StoredSubscription = {
   status: string
   plan: string
   stripe_customer_id: string
+  cancel_at_period_end?: boolean
+  current_period_end?: string | null
 }
 
 export const livePaidSubscription = (row: StoredSubscription | null): row is StoredSubscription =>

@@ -5,7 +5,7 @@ import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '
 import { loadSession, type AuthSession } from '../services/authService'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
 import { downloadJson } from '../utils/exportData'
-import { createOwnerWorkspaceExport, sanitizeOwnerMessages, sanitizeOwnerNotes, type StoredOwnerMessage } from '../utils/ownerWorkspace'
+import { createOwnerWorkspaceExport, defaultOwnerProjects, sanitizeOwnerMessages, sanitizeOwnerNotes, sanitizeOwnerProjects, type OwnerProject, type StoredOwnerMessage } from '../utils/ownerWorkspace'
 
 type OwnerMessage = StoredOwnerMessage
 
@@ -37,7 +37,13 @@ export function OwnerAurora() {
   const [messages, setMessages] = useState<OwnerMessage[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [noteDraft, setNoteDraft] = useState('')
+  const [projects, setProjects] = useState<OwnerProject[]>(defaultOwnerProjects)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUrlRef = useRef<string | null>(null)
+  const sessionUserIdRef = useRef(session?.user.id ?? null)
+  const requestIdRef = useRef(0)
+  const voiceRequestIdRef = useRef(0)
+  const statusRequestIdRef = useRef(0)
 
   const latestReply = useMemo(
     () => [...messages].reverse().find((message) => message.role === 'assistant')?.text || '',
@@ -58,29 +64,40 @@ export function OwnerAurora() {
   }, [])
 
   const refreshOwnerStatus = async (activeSession: AuthSession, active = true) => {
+    const requestId = ++statusRequestIdRef.current
+    const userId = activeSession.user.id
     setChecking(true)
     try {
       const result = await getOwnerAuroraStatus(activeSession)
-      if (!active) return
+      if (!active || requestId !== statusRequestIdRef.current || sessionUserIdRef.current !== userId) return
       setAllowed(result.owner)
       setReadiness(result.readiness ?? null)
     } catch {
-      if (!active) return
+      if (!active || requestId !== statusRequestIdRef.current || sessionUserIdRef.current !== userId) return
       setAllowed(false)
       setReadiness(null)
     } finally {
-      if (active) setChecking(false)
+      if (active && requestId === statusRequestIdRef.current && sessionUserIdRef.current === userId) setChecking(false)
     }
   }
 
   useEffect(() => {
     let active = true
+    sessionUserIdRef.current = session?.user.id ?? null
+    requestIdRef.current += 1
+    voiceRequestIdRef.current += 1
+    statusRequestIdRef.current += 1
+    setBusy(false)
+    setChecking(false)
+    setStatus('')
     setAllowed(false)
     setReadiness(null)
     setOpen(false)
     if (!session) return () => { active = false }
     setMessages(sanitizeOwnerMessages(safeLocalStorageGet(ownerKey('messages', session), [])))
     setNotes(sanitizeOwnerNotes(safeLocalStorageGet(ownerKey('notes', session), [])))
+    const savedProjects = sanitizeOwnerProjects(safeLocalStorageGet(ownerKey('projects', session), []))
+    setProjects(savedProjects.length ? savedProjects : defaultOwnerProjects())
     void refreshOwnerStatus(session, active)
     return () => { active = false }
   }, [session?.user.id])
@@ -93,10 +110,16 @@ export function OwnerAurora() {
     if (session && allowed) safeLocalStorageSet(ownerKey('notes', session), sanitizeOwnerNotes(notes))
   }, [notes, session, allowed])
 
+  useEffect(() => {
+    if (session && allowed) safeLocalStorageSet(ownerKey('projects', session), sanitizeOwnerProjects(projects))
+  }, [projects, session, allowed])
+
   const send = async (seed?: string) => {
     if (!session || !allowed || busy) return
     const text = (seed ?? input).trim().slice(0, 1800)
     if (!text) return
+    const requestId = ++requestIdRef.current
+    const userId = session.user.id
     const userMessage: OwnerMessage = { id: crypto.randomUUID(), role: 'user', text, createdAt: new Date().toISOString() }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -108,33 +131,49 @@ export function OwnerAurora() {
         session,
         nextMessages.map(({ role, text: messageText }) => ({ role, text: messageText })),
         notes,
+        projects,
       )
+      if (requestId !== requestIdRef.current || sessionUserIdRef.current !== userId) return
       setMessages((current) => [...current, {
         id: crypto.randomUUID(), role: 'assistant', text: reply, createdAt: new Date().toISOString(),
       }])
       setStatus('')
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Owner Aurora is unavailable.')
+      if (requestId === requestIdRef.current && sessionUserIdRef.current === userId) setStatus(error instanceof Error ? error.message : 'Owner Aurora is unavailable.')
     } finally {
-      setBusy(false)
+      if (requestId === requestIdRef.current && sessionUserIdRef.current === userId) setBusy(false)
     }
   }
 
+  const stopOwnerVoice = () => {
+    voiceRequestIdRef.current += 1
+    audioRef.current?.pause()
+    audioRef.current = null
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
+    audioUrlRef.current = null
+  }
+
+  useEffect(() => () => stopOwnerVoice(), [session?.user.id])
+
   const speakLatest = async () => {
     if (!session || !latestReply || !speechAvailable()) return
-    audioRef.current?.pause()
+    stopOwnerVoice()
+    const requestId = voiceRequestIdRef.current
+    const userId = session.user.id
     setStatus('Preparing Aurora’s voice…')
     try {
       const blob = await generateAuroraSpeech(session, latestReply)
+      if (requestId !== voiceRequestIdRef.current || sessionUserIdRef.current !== userId) return
       const url = URL.createObjectURL(blob)
+      audioUrlRef.current = url
       const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => { URL.revokeObjectURL(url); setStatus('') }
-      audio.onerror = () => { URL.revokeObjectURL(url); setStatus('Audio could not play on this device.') }
+      audio.onended = () => { if (requestId === voiceRequestIdRef.current) { stopOwnerVoice(); setStatus('') } }
+      audio.onerror = () => { if (requestId === voiceRequestIdRef.current) { stopOwnerVoice(); setStatus('Audio could not play on this device.') } }
       await audio.play()
-      setStatus('')
+      if (requestId === voiceRequestIdRef.current && sessionUserIdRef.current === userId) setStatus('')
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
+      if (requestId === voiceRequestIdRef.current && sessionUserIdRef.current === userId) setStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
     }
   }
 
@@ -147,10 +186,11 @@ export function OwnerAurora() {
 
   const clearWorkspace = () => {
     if (!session || !window.confirm('Clear your private Owner Aurora chat and notes from this browser?')) return
-    audioRef.current?.pause()
-    safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session))
+    stopOwnerVoice()
+    safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session), ownerKey('projects', session))
     setMessages([])
     setNotes([])
+    setProjects(defaultOwnerProjects())
     setInput('')
     setNoteDraft('')
     setStatus('Private Owner Aurora browser data cleared.')
@@ -190,6 +230,18 @@ export function OwnerAurora() {
             </section>
           )}
 
+
+          <section className="owner-projects" aria-label="Owner projects">
+            <div className="owner-readiness-head"><strong>Project control centre</strong><small>Verified boundaries</small></div>
+            {projects.map((project) => (
+              <article key={project.id} className="owner-project-card">
+                <div><strong>{project.name}</strong><span>{project.status}</span></div>
+                <p>{project.summary}</p>
+                <small>{project.id === 'ai-friendship' ? 'Current workspace · repository work verified in this project' : 'Next project · repository not connected or verified from this workspace'}</small>
+              </article>
+            ))}
+          </section>
+
           <div className="owner-aurora-prompts" aria-label="Owner Aurora quick prompts">
             {quickPrompts.map((prompt) => <button key={prompt} type="button" disabled={busy} onClick={() => void send(prompt)}>{prompt}</button>)}
           </div>
@@ -222,7 +274,7 @@ export function OwnerAurora() {
           </details>
 
           <div className="owner-data-actions">
-            <button type="button" onClick={() => downloadJson('owner-aurora-workspace.json', createOwnerWorkspaceExport(messages, notes))}>Export my owner workspace</button>
+            <button type="button" onClick={() => downloadJson('owner-aurora-workspace.json', createOwnerWorkspaceExport(messages, notes, projects))}>Export my owner workspace</button>
             <button type="button" onClick={clearWorkspace}>Clear private workspace</button>
           </div>
 

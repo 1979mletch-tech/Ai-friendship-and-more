@@ -7,7 +7,7 @@ export const isTrustedAgeVerificationUrl = (value: unknown): value is string => 
   if (typeof value !== 'string') return false
   try {
     const url = new URL(value)
-    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'verify.stripe.com'
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'verify.stripe.com' && !url.username && !url.password
   } catch {
     return false
   }

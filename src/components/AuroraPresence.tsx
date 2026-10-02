@@ -7,7 +7,7 @@ import { inferAuroraReaction, type AuroraReaction } from '../utils/auroraReactio
 import { AuroraFigure } from './AuroraFigure'
 import '../auroraMotion.css'
 
-const VOICE_SAMPLE = "Hello, I'm Aurora. Take your time. I'm here with you. What's on your mind today?"
+const VOICE_SAMPLE = "Hi, I'm Aurora. It's lovely to meet you. What shall we talk about?"
 
 type RecognitionResult = { results: ArrayLike<ArrayLike<{ transcript: string }>> }
 type Recognition = {
@@ -32,10 +32,13 @@ const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
 
 const reactionCopy: Record<AuroraReaction, string> = {
   neutral: 'Present',
+  warm: 'Warmly with you',
+  amused: 'Sharing the smile',
   celebrate: 'Celebrating with you',
   encourage: 'Encouraging you',
   calm: 'Keeping things calm',
   focus: 'Focused with you',
+  concerned: 'Listening closely',
 }
 
 const momentStarters: Array<{ label: string; scene: AuroraScene; prompt: string }> = [
@@ -78,6 +81,8 @@ export function AuroraPresence({
   const urlRef = useRef<string | null>(null)
   const playbackId = useRef(0)
   const lastAutoSpokenRef = useRef('')
+  const engagementTimerRef = useRef<number | null>(null)
+  const reactionTimerRef = useRef<number | null>(null)
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -87,7 +92,9 @@ export function AuroraPresence({
   const [autoFollow, setAutoFollow] = useState(true)
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [voiceEnergy, setVoiceEnergy] = useState(0)
+  const [speechPulse, setSpeechPulse] = useState(0)
   const [externalAiBusy, setExternalAiBusy] = useState(false)
+  const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
   const daypart = getAuroraDaypart()
   const available = speechAvailable() && Boolean(session)
   const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
@@ -102,6 +109,7 @@ export function AuroraPresence({
     animationFrameRef.current = null
     analyserRef.current = null
     setVoiceEnergy(0)
+    setSpeechPulse(0)
   }
 
   const startVoiceMeter = (audio: HTMLAudioElement) => {
@@ -120,7 +128,9 @@ export function AuroraPresence({
       const tick = () => {
         analyser.getByteFrequencyData(samples)
         const average = samples.reduce((sum, sample) => sum + sample, 0) / Math.max(1, samples.length)
-        setVoiceEnergy(Math.min(1, average / 110))
+        const energy = Math.min(1, average / 110)
+        setVoiceEnergy(energy)
+        setSpeechPulse((current) => current * 0.72 + energy * 0.28)
         animationFrameRef.current = requestAnimationFrame(tick)
       }
       tick()
@@ -138,6 +148,7 @@ export function AuroraPresence({
     urlRef.current = null
     setSpeaking(false)
     setLoading(false)
+    setVoiceStatus('')
   }
 
   const play = async (text: string) => {
@@ -184,7 +195,13 @@ export function AuroraPresence({
     const handleUserMessage = (event: Event) => {
       const text = (event as CustomEvent<string>).detail
       if (typeof text !== 'string') return
-      setReaction(inferAuroraReaction(text))
+      const nextReaction = inferAuroraReaction(text)
+      setReaction(nextReaction)
+      setEngagement('engaged')
+      if (engagementTimerRef.current !== null) window.clearTimeout(engagementTimerRef.current)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
+      engagementTimerRef.current = window.setTimeout(() => setEngagement('idle'), 6500)
+      if (nextReaction !== 'neutral') reactionTimerRef.current = window.setTimeout(() => setReaction('neutral'), 9000)
       if (!autoFollow) return
       const nextScene = inferAuroraScene(text)
       if (nextScene) setScene(nextScene)
@@ -194,13 +211,19 @@ export function AuroraPresence({
     return () => {
       window.removeEventListener('aurora-ai-busy', handleAiBusy)
       window.removeEventListener('aurora-user-message', handleUserMessage)
+      if (engagementTimerRef.current !== null) window.clearTimeout(engagementTimerRef.current)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
     }
   }, [autoFollow])
 
   useEffect(() => {
     if (!latestReply) return
     const nextReaction = inferAuroraReaction(latestReply)
-    if (nextReaction !== 'neutral') setReaction(nextReaction)
+    if (nextReaction !== 'neutral') {
+      setReaction(nextReaction)
+      if (reactionTimerRef.current !== null) window.clearTimeout(reactionTimerRef.current)
+      reactionTimerRef.current = window.setTimeout(() => setReaction('neutral'), 9000)
+    }
   }, [latestReply])
 
   useEffect(() => {
@@ -211,6 +234,7 @@ export function AuroraPresence({
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
+    recognitionRef.current = null
     playbackId.current += 1
     audioRef.current?.pause()
     stopVoiceMeter()
@@ -219,10 +243,18 @@ export function AuroraPresence({
   }, [])
 
   useEffect(() => () => {
+    recognitionRef.current?.stop()
+    recognitionRef.current = null
+    setListening(false)
     playbackId.current += 1
     audioRef.current?.pause()
+    audioRef.current = null
     stopVoiceMeter()
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    urlRef.current = null
+    setSpeaking(false)
+    setLoading(false)
+    setVoiceStatus('')
   }, [session?.user.id])
 
   const toggleListening = () => {
@@ -264,7 +296,8 @@ export function AuroraPresence({
       data-scene={scene}
       data-daypart={daypart}
       data-reaction={reaction}
-      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3) } as CSSProperties}
+      data-engagement={engagement}
+      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3), '--aurora-speech-pulse': speechPulse.toFixed(3) } as CSSProperties}
     >
       <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
         <div className="aurora-sky" aria-hidden="true" />

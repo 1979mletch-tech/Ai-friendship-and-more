@@ -37,3 +37,12 @@ No secret values are returned to the browser.
 ## Private workspace controls
 
 The owner can export or clear Owner Aurora browser data independently of customer-facing AI Friendship data.
+
+
+## Multi-project control centre
+
+- AI Friendship is the current project in this workspace.
+- AI Doctor may be listed as the next project for planning, but its repository/deployment state is **not** treated as verified until that project is separately connected and checked.
+- The browser accepts only the fixed project IDs supported by the application, deduplicates them, bounds text fields, and stores the registry under the signed-in owner's account-scoped browser key.
+- Project registry entries sent to Owner Aurora are untrusted planning context. They are not evidence of CI, deployment, billing, database, or live-service state.
+- Owner Aurora must not turn a registry label into a claim that a separate project is connected or healthy.
