@@ -39,6 +39,7 @@ export function OwnerAurora() {
   const [noteDraft, setNoteDraft] = useState('')
   const [projects, setProjects] = useState<OwnerProject[]>(defaultOwnerProjects)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUrlRef = useRef<string | null>(null)
 
   const latestReply = useMemo(
     () => [...messages].reverse().find((message) => message.role === 'assistant')?.text || '',
@@ -128,17 +129,27 @@ export function OwnerAurora() {
     }
   }
 
+  const stopOwnerVoice = () => {
+    audioRef.current?.pause()
+    audioRef.current = null
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
+    audioUrlRef.current = null
+  }
+
+  useEffect(() => () => stopOwnerVoice(), [session?.user.id])
+
   const speakLatest = async () => {
     if (!session || !latestReply || !speechAvailable()) return
-    audioRef.current?.pause()
+    stopOwnerVoice()
     setStatus('Preparing Aurora’s voice…')
     try {
       const blob = await generateAuroraSpeech(session, latestReply)
       const url = URL.createObjectURL(blob)
+      audioUrlRef.current = url
       const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => { URL.revokeObjectURL(url); setStatus('') }
-      audio.onerror = () => { URL.revokeObjectURL(url); setStatus('Audio could not play on this device.') }
+      audio.onended = () => { stopOwnerVoice(); setStatus('') }
+      audio.onerror = () => { stopOwnerVoice(); setStatus('Audio could not play on this device.') }
       await audio.play()
       setStatus('')
     } catch (error) {
@@ -155,7 +166,7 @@ export function OwnerAurora() {
 
   const clearWorkspace = () => {
     if (!session || !window.confirm('Clear your private Owner Aurora chat and notes from this browser?')) return
-    audioRef.current?.pause()
+    stopOwnerVoice()
     safeLocalStorageDelete(ownerKey('messages', session), ownerKey('notes', session), ownerKey('projects', session))
     setMessages([])
     setNotes([])
