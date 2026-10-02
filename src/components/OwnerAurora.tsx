@@ -243,7 +243,7 @@ export function OwnerAurora() {
           </details>
 
           <div className="owner-data-actions">
-            <button type="button" onClick={() => downloadJson('owner-aurora-workspace.json', createOwnerWorkspaceExport(messages, notes))}>Export my owner workspace</button>
+            <button type="button" onClick={() => downloadJson('owner-aurora-workspace.json', createOwnerWorkspaceExport(messages, notes, projects))}>Export my owner workspace</button>
             <button type="button" onClick={clearWorkspace}>Clear private workspace</button>
           </div>
 
