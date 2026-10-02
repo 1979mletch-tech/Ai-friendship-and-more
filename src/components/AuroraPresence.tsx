@@ -148,6 +148,7 @@ export function AuroraPresence({
     urlRef.current = null
     setSpeaking(false)
     setLoading(false)
+    setVoiceStatus('')
   }
 
   const play = async (text: string) => {
@@ -233,6 +234,7 @@ export function AuroraPresence({
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
+    recognitionRef.current = null
     playbackId.current += 1
     audioRef.current?.pause()
     stopVoiceMeter()
