@@ -51,6 +51,16 @@ describe('chat service', () => {
     await expect(sendCloudChat(session, [], 'general', 'Friend')).rejects.toThrow(/invalid response/i)
   })
 
+  it('rejects blank server replies and trims valid replies', async () => {
+    vi.stubEnv('VITE_CHAT_API_URL', 'https://example.test/chat')
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ reply: '   ' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ reply: '  hello Aurora  ' }), { status: 200 }))
+    await expect(sendCloudChat(session, [{ role: 'user', text: 'hello' }], 'general', 'Friend')).rejects.toThrow(/invalid response/i)
+    await expect(sendCloudChat(session, [{ role: 'user', text: 'hello' }], 'general', 'Friend')).resolves.toMatchObject({ reply: 'hello Aurora' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('refreshes an expiring session before sending private messages', async () => {
     vi.stubEnv('VITE_CHAT_API_URL', 'https://example.test/chat')
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
