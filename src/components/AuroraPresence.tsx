@@ -243,10 +243,18 @@ export function AuroraPresence({
   }, [])
 
   useEffect(() => () => {
+    recognitionRef.current?.stop()
+    recognitionRef.current = null
+    setListening(false)
     playbackId.current += 1
     audioRef.current?.pause()
+    audioRef.current = null
     stopVoiceMeter()
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    urlRef.current = null
+    setSpeaking(false)
+    setLoading(false)
+    setVoiceStatus('')
   }, [session?.user.id])
 
   const toggleListening = () => {
