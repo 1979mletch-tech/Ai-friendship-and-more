@@ -23,10 +23,11 @@ describe('Owner Aurora workspace', () => {
   it('creates an owner-only export envelope', () => {
     const bundle = createOwnerWorkspaceExport([
       { id: '1', role: 'user', text: 'review launch', createdAt: 'now' },
-    ], ['owner note'])
+    ], ['owner note'], [{ id: 'ai-friendship', name: 'AI Friendship', status: 'active', summary: 'launch work' }])
     expect(bundle.workspace).toBe('Owner Aurora')
     expect(bundle.messages).toHaveLength(1)
     expect(bundle.notes).toEqual(['owner note'])
+    expect(bundle.projects).toEqual([{ id: 'ai-friendship', name: 'AI Friendship', status: 'active', summary: 'launch work' }])
   })
   it('keeps Owner Aurora project state bounded to approved projects', () => {
     const result = sanitizeOwnerProjects([
