@@ -37,11 +37,12 @@ Deno.serve(async (req) => {
   if (quotaError) return json('Speech request limit unavailable', 503)
   if (!reserved) return json('Too many requests. Please wait a moment.', 429)
 
+  const clientRequestId = crypto.randomUUID()
   let response: Response
   try {
     response = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Client-Request-Id': clientRequestId },
       body: JSON.stringify({
         model: 'gpt-4o-mini-tts',
         voice: 'marin',
@@ -51,8 +52,9 @@ Deno.serve(async (req) => {
       }),
       signal: AbortSignal.timeout(25_000),
     })
-  } catch { return json('Speech provider unavailable', 502) }
-  if (!response.ok) return json('Speech provider unavailable', 502)
+  } catch { console.error('speech_request_failed', { requestId: clientRequestId }); return json('Speech provider unavailable', 502) }
+  const requestId = response.headers.get('x-request-id') || clientRequestId
+  if (!response.ok) { console.error('speech_response_error', { status: response.status, requestId }); return json(response.status === 429 ? 'Aurora voice is busy. Please try again shortly.' : 'Speech provider unavailable', response.status === 429 ? 429 : 502) }
   const bytes = await response.arrayBuffer()
   if (!bytes.byteLength || bytes.byteLength > 4_000_000) return json('Invalid speech response', 502)
   return new Response(bytes, { headers: { ...cors, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } })
