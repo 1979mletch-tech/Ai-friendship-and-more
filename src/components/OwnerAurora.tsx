@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AuroraFigure } from './AuroraFigure'
 import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
 import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '../services/ownerAuroraService'
 import { loadSession, type AuthSession } from '../services/authService'
@@ -207,7 +206,7 @@ export function OwnerAurora() {
       ) : (
         <div className="owner-aurora-panel">
           <header className="owner-aurora-header">
-            <div className="owner-aurora-mini" aria-hidden="true"><AuroraFigure /></div>
+            <div className="owner-aurora-mini"><img src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="" /></div>
             <div><strong>Owner Aurora</strong><small>Private owner workspace · AI</small></div>
             <button type="button" aria-label="Close Owner Aurora" onClick={() => setOpen(false)}>×</button>
           </header>
