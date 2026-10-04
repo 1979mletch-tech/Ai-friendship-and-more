@@ -79,6 +79,7 @@ describe('auth service', () => {
   it('sends password recovery back to the deployed app instead of localhost', async () => {
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'public-key')
+    Object.defineProperty(globalThis, 'window', { value: { location: { origin: 'https://1979mletch-tech.github.io' }, dispatchEvent: vi.fn() }, configurable: true })
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
     await requestPasswordReset('person@example.test')
     const [, init] = fetchMock.mock.calls[0]
