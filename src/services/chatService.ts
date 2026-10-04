@@ -7,7 +7,7 @@ type OutboundMessage = { role: 'user' | 'assistant'; text: string }
 
 type ProjectNoteInput = { project?: unknown; tags?: unknown; note?: unknown }
 
-export type ChatResult = { reply: string; safetyFlag?: boolean; mode?: string }
+export type ChatResult = { reply: string; safetyFlag?: boolean; mode?: string; requestId?: string }
 
 const signalAuroraThinking = (busy: boolean) => {
   if (typeof window !== 'undefined') {
