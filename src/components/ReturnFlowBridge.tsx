@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
 import { getBillingPlan } from '../services/billingService'
-import { loadSession, refreshSession, saveSession } from '../services/authService'
+import { completePasswordRecovery, loadSession, refreshSession, saveSession } from '../services/authService'
 import { finishAgeVerification, hasPendingAgeVerification } from '../services/ageVerificationService'
 import { clearReturnFlowFromUrl, parseReturnFlow } from '../utils/returnFlow'
 
-type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error'
+type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error' | 'password'
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
 export function ReturnFlowBridge() {
   const [state, setState] = useState<FlowState>('idle')
   const [message, setMessage] = useState('')
-  const [retry, setRetry] = useState(0)
+  const [retry, setRetry] = useState(0)\n  const [recoveryToken, setRecoveryToken] = useState('')\n  const [newPassword, setNewPassword] = useState('')\n  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     const flow = parseReturnFlow(window.location.search)
@@ -118,7 +118,7 @@ export function ReturnFlowBridge() {
     return () => { active = false }
   }, [retry])
 
-  if (state === 'idle') return null
+  const finishPasswordReset = async () => {\n    if (!recoveryToken) return\n    if (newPassword !== confirmPassword) { setMessage('The passwords do not match.'); return }\n    try {\n      await completePasswordRecovery(recoveryToken, newPassword)\n      window.history.replaceState({}, '', window.location.pathname + '#/account')\n      setRecoveryToken('')\n      setNewPassword('')\n      setConfirmPassword('')\n      setState('success')\n      setMessage('Password updated. You can now sign in with your new password.')\n    } catch (error) {\n      setState('password')\n      setMessage(error instanceof Error ? error.message : 'Unable to update password.')\n    }\n  }\n\n  if (state === 'idle') return null
 
   return (
     <aside className={`return-flow return-flow-${state}`} role="status" aria-live="polite">
