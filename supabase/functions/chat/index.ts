@@ -103,24 +103,49 @@ Deno.serve(async (req) => {
   if (reservationError) return json({ error: 'AI request limit is temporarily unavailable' }, 503)
   if (!reserved) return json({ error: 'Your current AI message allowance has been used. Choose or renew a plan to continue.' }, 429)
 
+  const clientRequestId = crypto.randomUUID()
   let ai: Response
-  try { ai = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini',
-      messages: [{ role: 'system', content: system }, ...messages],
-      temperature: 0.85,
-      max_tokens: 700,
-      frequency_penalty: 0.45,
-      presence_penalty: 0.2,
-    }),
-    signal: AbortSignal.timeout(20_000),
-  }) } catch { return json({ error: 'AI provider unavailable' }, 502) }
-  if (!ai.ok) return json({ error: 'AI provider unavailable' }, 502)
+  try {
+    ai = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + key,
+        'Content-Type': 'application/json',
+        'X-Client-Request-Id': clientRequestId,
+      },
+      body: JSON.stringify({
+        model: Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna',
+        instructions: system,
+        input: messages.map((message: { role: 'user' | 'assistant'; content: string }) => ({
+          role: message.role,
+          content: [{ type: 'input_text', text: message.content }],
+        })),
+        max_output_tokens: 700,
+        safety_identifier: user.id,
+      }),
+      signal: AbortSignal.timeout(25_000),
+    })
+  } catch {
+    console.error('openai_request_failed', { clientRequestId })
+    return json({ error: 'AI provider unavailable', requestId: clientRequestId }, 502)
+  }
+
+  const openaiRequestId = ai.headers.get('x-request-id') || clientRequestId
+  if (!ai.ok) {
+    console.error('openai_response_error', { status: ai.status, requestId: openaiRequestId })
+    return json({ error: ai.status === 429 ? 'Aurora is busy. Please try again shortly.' : 'AI provider unavailable', requestId: openaiRequestId }, ai.status === 429 ? 429 : 502)
+  }
+
   const payload = await ai.json().catch(() => null)
-  const reply = payload?.choices?.[0]?.message?.content
-  if (typeof reply !== 'string' || !reply.trim()) return json({ error: 'Invalid AI response' }, 502)
+  const reply = Array.isArray(payload?.output)
+    ? payload.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
+      .find((item: any) => item?.type === 'output_text' && typeof item?.text === 'string')?.text
+    : undefined
+  if (typeof reply !== 'string' || !reply.trim()) {
+    console.error('openai_invalid_response', { requestId: openaiRequestId })
+    return json({ error: 'Invalid AI response', requestId: openaiRequestId }, 502)
+  }
+
   const screened = screenReply(reply.trim())
-  return json({ reply: screened, mode: 'live', safetyFlag: screened !== reply.trim() })
+  return json({ reply: screened, mode: 'live', safetyFlag: screened !== reply.trim(), requestId: openaiRequestId })
 })
