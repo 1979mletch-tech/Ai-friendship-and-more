@@ -124,6 +124,13 @@ export function ReturnFlowBridge() {
     <aside className={`return-flow return-flow-${state}`} role="status" aria-live="polite">
       <strong>{state === 'working' ? 'Checking your account…' : state === 'success' ? 'Account updated' : state === 'cancelled' ? 'Checkout cancelled' : state === 'pending' ? 'Still confirming' : 'Account check needed'}</strong>
       {message && <span>{message}</span>}
+      {state === 'password' && (
+        <div className="return-flow-password">
+          <input type="password" autoComplete="new-password" placeholder="New password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          <input type="password" autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          <button type="button" onClick={() => void finishPasswordReset()}>Set new password</button>
+        </div>
+      )}
       {(state === 'pending' || state === 'error') && (
         <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry status</button>
       )}
