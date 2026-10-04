@@ -76,6 +76,17 @@ describe('auth service', () => {
     await expect(signIn('a@example.test', 'password123')).rejects.toThrow(/not configured/i)
   })
 
+  it('sends password recovery back to the deployed app instead of localhost', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.test')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'public-key')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    await requestPasswordReset('person@example.test')
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String(init?.body))
+    expect(body.redirect_to).not.toContain('localhost')
+    expect(body.redirect_to).toContain('?return=password-recovery')
+  })
+
   it('rejects invalid registration and recovery inputs before network requests', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     await expect(signUp('bad-email', 'strongpassword')).rejects.toThrow(/valid email/i)
