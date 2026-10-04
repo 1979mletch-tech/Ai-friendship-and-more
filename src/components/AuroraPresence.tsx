@@ -140,8 +140,8 @@ export function AuroraPresence({
           alt="Aurora, a fictional adult AI companion"
         />
         <div className="aurora-live-badge" aria-live="polite">
-          <span className={aiBusy || externalAiBusy ? 'aurora-status-dot busy' : 'aurora-status-dot'} />
-          {aiBusy || externalAiBusy ? 'Aurora is thinking' : speaking ? 'Aurora is speaking' : listening ? 'Listening' : 'Aurora'}
+          <span className={aiBusy ? 'aurora-status-dot busy' : 'aurora-status-dot'} />
+          {aiBusy ? 'Aurora is thinking' : speaking ? 'Aurora is speaking' : listening ? 'Listening' : 'Aurora'}
         </div>
       </div>
 
