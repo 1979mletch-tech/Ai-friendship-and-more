@@ -11,9 +11,22 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 export function ReturnFlowBridge() {
   const [state, setState] = useState<FlowState>('idle')
   const [message, setMessage] = useState('')
-  const [retry, setRetry] = useState(0)\n  const [recoveryToken, setRecoveryToken] = useState('')\n  const [newPassword, setNewPassword] = useState('')\n  const [confirmPassword, setConfirmPassword] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [recoveryToken, setRecoveryToken] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const recoveryAccessToken = hashParams.get('access_token') || params.get('access_token') || ''
+    const recoveryType = hashParams.get('type') || params.get('type') || ''
+    if (recoveryAccessToken && recoveryType === 'recovery') {
+      setRecoveryToken(recoveryAccessToken)
+      setState('password')
+      setMessage('Choose a new password for your Aurora account.')
+      return
+    }
     const flow = parseReturnFlow(window.location.search)
     if (!flow) return
     let active = true
@@ -118,7 +131,24 @@ export function ReturnFlowBridge() {
     return () => { active = false }
   }, [retry])
 
-  const finishPasswordReset = async () => {\n    if (!recoveryToken) return\n    if (newPassword !== confirmPassword) { setMessage('The passwords do not match.'); return }\n    try {\n      await completePasswordRecovery(recoveryToken, newPassword)\n      window.history.replaceState({}, '', window.location.pathname + '#/account')\n      setRecoveryToken('')\n      setNewPassword('')\n      setConfirmPassword('')\n      setState('success')\n      setMessage('Password updated. You can now sign in with your new password.')\n    } catch (error) {\n      setState('password')\n      setMessage(error instanceof Error ? error.message : 'Unable to update password.')\n    }\n  }\n\n  if (state === 'idle') return null
+  const finishPasswordReset = async () => {
+    if (!recoveryToken) return
+    if (newPassword !== confirmPassword) { setMessage('The passwords do not match.'); return }
+    try {
+      await completePasswordRecovery(recoveryToken, newPassword)
+      window.history.replaceState({}, '', window.location.pathname + '#/account')
+      setRecoveryToken('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setState('success')
+      setMessage('Password updated. You can now sign in with your new password.')
+    } catch (error) {
+      setState('password')
+      setMessage(error instanceof Error ? error.message : 'Unable to update password.')
+    }
+  }
+
+  if (state === 'idle') return null
 
   return (
     <aside className={`return-flow return-flow-${state}`} role="status" aria-live="polite">
