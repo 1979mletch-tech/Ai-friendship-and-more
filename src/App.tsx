@@ -92,7 +92,7 @@ const App = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, session), []),
   )
-  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Friend'))
+  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Aurora'))
   const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
   const [memoryDraft, setMemoryDraft] = useState('')
   const [historyQuery, setHistoryQuery] = useState('')
@@ -266,7 +266,7 @@ const App = () => {
     setBillingStatus(null)
     setAdultAccess(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.adultAccess, next), false))
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
-    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Friend'))
+    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Aurora'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
     setProjectNotes(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, next), []))
     setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
