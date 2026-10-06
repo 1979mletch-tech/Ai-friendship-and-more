@@ -17,12 +17,7 @@ type Recognition = {
 }
 type RecognitionConstructor = new () => Recognition
 
-export function AuroraPresence({
-  latestReply,
-  onTranscript,
-  session,
-  aiBusy = false,
-}: {
+export function AuroraPresence({ latestReply, onTranscript, session, aiBusy = false }: {
   latestReply?: string
   onTranscript: (text: string) => void
   session: AuthSession | null
@@ -42,15 +37,19 @@ export function AuroraPresence({
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
     : undefined
 
-  const stopPlayback = () => {
-    playbackId.current += 1
+  const clearAudio = () => {
     audioRef.current?.pause()
     audioRef.current = null
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
     urlRef.current = null
+  }
+
+  const stopPlayback = (clearStatus = true) => {
+    playbackId.current += 1
+    clearAudio()
     setSpeaking(false)
     setLoading(false)
-    setVoiceStatus('')
+    if (clearStatus) setVoiceStatus('')
   }
 
   const play = async (text: string) => {
@@ -65,18 +64,32 @@ export function AuroraPresence({
       const url = URL.createObjectURL(blob)
       urlRef.current = url
       const audio = new Audio(url)
+      audio.preload = 'auto'
       audioRef.current = audio
-      audio.onended = () => { if (id === playbackId.current) stopPlayback() }
-      audio.onerror = () => { if (id === playbackId.current) { stopPlayback(); setVoiceStatus('Audio could not play on this device.') } }
+      audio.onended = () => {
+        if (id !== playbackId.current) return
+        clearAudio()
+        setSpeaking(false)
+        setVoiceStatus('')
+      }
+      audio.onerror = () => {
+        if (id !== playbackId.current) return
+        clearAudio()
+        setSpeaking(false)
+        setLoading(false)
+        setVoiceStatus('Audio could not play on this device. Check media volume and try again.')
+      }
       await audio.play()
       if (id === playbackId.current) {
         setLoading(false)
         setSpeaking(true)
-        setVoiceStatus('')
+        setVoiceStatus('Aurora is speaking.')
       }
     } catch (error) {
       if (id === playbackId.current) {
-        stopPlayback()
+        clearAudio()
+        setSpeaking(false)
+        setLoading(false)
         setVoiceStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
       }
     }
@@ -86,24 +99,14 @@ export function AuroraPresence({
     recognitionRef.current?.stop()
     recognitionRef.current = null
     playbackId.current += 1
-    audioRef.current?.pause()
-    audioRef.current = null
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-    urlRef.current = null
+    clearAudio()
   }, [])
 
-  useEffect(() => () => {
+  useEffect(() => {
     recognitionRef.current?.stop()
     recognitionRef.current = null
     setListening(false)
-    playbackId.current += 1
-    audioRef.current?.pause()
-    audioRef.current = null
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-    urlRef.current = null
-    setSpeaking(false)
-    setLoading(false)
-    setVoiceStatus('')
+    stopPlayback()
   }, [session?.user.id])
 
   const toggleListening = () => {
@@ -134,11 +137,7 @@ export function AuroraPresence({
   return (
     <div className="aurora-presence aurora-presence-premium">
       <div className="aurora-portrait-card">
-        <img
-          className="aurora-live-portrait"
-          src={`${import.meta.env.BASE_URL}aurora-portrait.webp`}
-          alt="Aurora, a fictional adult AI companion"
-        />
+        <img className="aurora-live-portrait" src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="Aurora, a fictional adult AI companion" />
         <div className="aurora-live-badge" aria-live="polite">
           <span className={aiBusy ? 'aurora-status-dot busy' : 'aurora-status-dot'} />
           {aiBusy ? 'Aurora is thinking' : speaking ? 'Aurora is speaking' : listening ? 'Listening' : 'Aurora'}
@@ -150,19 +149,19 @@ export function AuroraPresence({
         <h2>Talk naturally. Hear her reply.</h2>
         <p className="small">Aurora is an AI companion. Chat is private to your account, and voice is optional.</p>
         <div className="voice-controls">
-          <button type="button" onClick={toggleListening} disabled={!recognitionType} aria-pressed={listening}>
+          <button type="button" onClick={toggleListening} disabled={!recognitionType || aiBusy} aria-pressed={listening}>
             {listening ? 'Stop listening' : 'Speak a message'}
           </button>
-          <button type="button" onClick={() => speaking || loading ? stopPlayback() : void play(VOICE_SAMPLE)} disabled={!available} aria-pressed={speaking}>
+          <button type="button" onClick={() => speaking || loading ? stopPlayback() : void play(VOICE_SAMPLE)} disabled={!available || aiBusy} aria-pressed={speaking}>
             {loading ? 'Stop loading' : speaking ? 'Stop voice' : 'Hear Aurora'}
           </button>
-          <button type="button" onClick={() => speaking || loading ? stopPlayback() : latestReply && void play(latestReply)} disabled={!available || !latestReply} aria-pressed={speaking}>
+          <button type="button" onClick={() => speaking || loading ? stopPlayback() : latestReply && void play(latestReply)} disabled={!available || !latestReply || aiBusy} aria-pressed={speaking}>
             {speaking || loading ? 'Stop voice' : 'Hear latest reply'}
           </button>
         </div>
         {!available && <p className="small">Sign in and complete adult verification to enable Aurora’s generated voice.</p>}
         {!recognitionType && <p className="small">Microphone input is unavailable in this browser. You can type instead.</p>}
-        {voiceStatus && <p className="small" role="status">{voiceStatus}</p>}
+        {voiceStatus && <p className="small" role="status" aria-live="polite">{voiceStatus}</p>}
       </div>
     </div>
   )
