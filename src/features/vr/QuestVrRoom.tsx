@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ComfortControls } from '../companion/ComfortControls'
+import { getVrCapabilities } from './vrCapabilities'
 
-type XrSession = { end: () => Promise<void>; requestAnimationFrame: (callback: (time: number, frame: unknown) => void) => number; updateRenderState: (state: { baseLayer: unknown }) => void; addEventListener: (name: string, callback: () => void) => void }
+type XrFrame = { getViewerPose: (space: unknown) => { views: unknown[] } | null }
+type XrLayer = { framebuffer: WebGLFramebuffer | null; getViewport: (view: unknown) => { x: number; y: number; width: number; height: number } | null }
+type XrSession = { end: () => Promise<void>; requestAnimationFrame: (callback: (time: number, frame: XrFrame) => void) => number; updateRenderState: (state: { baseLayer: XrLayer }) => void; requestReferenceSpace: (type: string) => Promise<unknown>; addEventListener: (name: string, callback: () => void) => void }
 type XrApi = { isSessionSupported: (mode: string) => Promise<boolean>; requestSession: (mode: string, options?: object) => Promise<XrSession> }
-type XrLayerConstructor = new (session: XrSession, gl: WebGLRenderingContext) => unknown
+type XrLayerConstructor = new (session: XrSession, gl: WebGLRenderingContext) => XrLayer
 
 export function QuestVrRoom({ owner = false }: { owner?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -13,10 +16,11 @@ export function QuestVrRoom({ owner = false }: { owner?: boolean }) {
   const [status, setStatus] = useState('VR availability is being checked.')
   useEffect(() => {
     let active = true
-    const xr = (navigator as Navigator & { xr?: XrApi }).xr
-    void xr?.isSessionSupported('immersive-vr').then(ok => {
-      if (active) { setSupported(ok); setStatus(ok ? 'Quest VR is available.' : 'Use the on-screen preview on this device.') }
-    }).catch(() => { if (active) setStatus('VR unavailable; on-screen preview remains available.') })
+    void getVrCapabilities().then(({ secure, immersive }) => {
+      if (!active) return
+      setSupported(immersive)
+      setStatus(!secure ? 'VR needs HTTPS and a compatible browser.' : immersive ? 'Quest VR is available.' : 'VR unavailable; use the on-screen preview.')
+    })
     return () => { active = false; void sessionRef.current?.end().catch(() => undefined) }
   }, [])
   const exit = () => { void sessionRef.current?.end().catch(() => undefined) }
@@ -32,14 +36,28 @@ export function QuestVrRoom({ owner = false }: { owner?: boolean }) {
       sessionRef.current = session
       const Layer = (window as Window & { XRWebGLLayer?: XrLayerConstructor }).XRWebGLLayer
       if (!Layer) { await session.end(); throw new Error('WebXR layer unavailable.') }
-      session.updateRenderState({ baseLayer: new Layer(session, gl) })
+      const layer = new Layer(session, gl)
+      session.updateRenderState({ baseLayer: layer })
+      let referenceSpace: unknown
+      try { referenceSpace = await session.requestReferenceSpace('local-floor') }
+      catch { referenceSpace = await session.requestReferenceSpace('local') }
       session.addEventListener('end', () => { sessionRef.current = null; setRunning(false); setStatus('VR session ended.') })
       setRunning(true)
-      setStatus('Immersive room shell active. Animated avatar and hand interaction are not installed yet.')
-      const draw = () => {
+      setStatus('Stereo VR background active. Photorealistic avatar and gesture tracking are not installed yet.')
+      const draw = (_time: number, frame: XrFrame) => {
         if (sessionRef.current !== session) return
-        gl.clearColor(0.09, 0.07, 0.19, 1)
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+        const pose = frame.getViewerPose(referenceSpace)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer)
+        gl.enable(gl.SCISSOR_TEST)
+        for (const view of pose?.views ?? []) {
+          const viewport = layer.getViewport(view)
+          if (!viewport) continue
+          gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height)
+          gl.scissor(viewport.x, viewport.y, viewport.width, viewport.height)
+          gl.clearColor(0.09, 0.07, 0.19, 1)
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+        }
+        gl.disable(gl.SCISSOR_TEST)
         session.requestAnimationFrame(draw)
       }
       session.requestAnimationFrame(draw)
