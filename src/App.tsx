@@ -21,6 +21,9 @@ import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './uti
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
 import { getBillingStatus, openBilling, type BillingStatus } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
+import { ComfortControls } from './features/companion/ComfortControls'
+import { PlacesExplorer } from './features/places/PlacesExplorer'
+import { QuestVrRoom } from './features/vr/QuestVrRoom'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -356,6 +359,8 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <AuroraPresence session={session} aiBusy={isSending} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <ComfortControls />
+      <PlacesExplorer />
       <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
@@ -741,36 +746,9 @@ const App = () => {
 
   const renderImmersive = () => (
     <section className="panel">
-      <h2>Immersive Friend (VR Preview / Coming Next)</h2>
-      <p>
-        Calm creative studio preview for desktop/mobile now. Full headset/WebXR support is a future integration,
-        not active in this V1 phase.
-      </p>
-      <div className="immersive-room" role="img" aria-label="Creative studio visual preview">
-        <div className="orb" />
-        <p>Companion presence • soft studio ambience • reflective space</p>
-      </div>
-      <div className="starters">
-        {['Walk me through today’s creative focus', 'Give me one brave next step', 'Summarize my project mood'].map(
-          (card) => (
-            <button key={card} type="button" onClick={() => setInput(card)}>
-              {card}
-            </button>
-          ),
-        )}
-      </div>
-      <p className="small">
-        WebXR capability detected:{' '}
-        {xrStatus === 'checking'
-          ? 'checking…'
-          : xrStatus === 'available'
-            ? 'yes (future upgrade boundary ready)'
-            : 'not detected'}
-      </p>
-      <p className="small">
-        Future architecture boundary: WebXR/Three.js module, capability detection, keyboard/screen-reader fallback,
-        and explicit privacy controls for voice/spatial signals.
-      </p>
+      <h2>Aurora Immersive — Quest 3S</h2>
+      <QuestVrRoom />
+      <p className="small">VR currently displays a basic room background. Realistic avatar animation, voice and physical-style gesture visuals are still in development.</p>
     </section>
   )
 
