@@ -16,8 +16,9 @@ const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Aurora application root is missing.')
 
 const showBootFailure = () => {
-  if (rootElement.hasChildNodes()) return
+  if (document.getElementById('aurora-boot-failure')) return
   const panel = document.createElement('main')
+  panel.id = 'aurora-boot-failure'
   panel.setAttribute('role', 'alert')
   const heading = document.createElement('h1')
   heading.textContent = 'Aurora could not start'
@@ -27,7 +28,7 @@ const showBootFailure = () => {
   retry.textContent = 'Reload Aurora'
   retry.addEventListener('click', () => window.location.reload())
   panel.append(heading, message, retry)
-  rootElement.append(panel)
+  rootElement.replaceChildren(panel)
 }
 window.addEventListener('error', showBootFailure)
 window.addEventListener('unhandledrejection', showBootFailure)
