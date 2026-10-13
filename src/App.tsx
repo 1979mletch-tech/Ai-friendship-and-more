@@ -21,6 +21,8 @@ import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './uti
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
 import { getBillingStatus, openBilling, type BillingStatus } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
+import { ComfortControls } from './features/companion/ComfortControls'
+import { PlacesExplorer } from './features/places/PlacesExplorer'
 
 type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
 type ChatMode = 'general' | 'creative'
@@ -356,6 +358,8 @@ const App = () => {
   const renderChat = () => (
     <section className="panel">
       <AuroraPresence session={session} aiBusy={isSending} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <ComfortControls />
+      <PlacesExplorer />
       <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
