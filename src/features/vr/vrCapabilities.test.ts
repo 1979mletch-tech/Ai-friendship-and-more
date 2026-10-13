@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('Quest VR capability detection', () => {
   it('fails safely when no browser is present', async () => {
     vi.stubGlobal('navigator', undefined)
-    expect(await getVrCapabilities()).toEqual({ secure: false, immersive: false, handTrackingRequested: false })
+    expect(await getVrCapabilities()).toEqual({ secure: false, immersive: false, handTrackingRequestable: false })
   })
   it('does not claim immersive VR when WebXR is missing', async () => {
     vi.stubGlobal('navigator', {})

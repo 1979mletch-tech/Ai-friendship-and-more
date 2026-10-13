@@ -108,7 +108,6 @@ const App = () => {
       'free',
     ),
   )
-  const [xrStatus, setXrStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
 
   const billing = useMemo(() => getSubscriptionState(), [])
   const entitlements = useMemo(() => getEntitlements(planId), [planId])
@@ -132,30 +131,6 @@ const App = () => {
     const onHash = () => setRoute(parseRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
-
-  useEffect(() => {
-    let active = true
-
-    const detectXr = async () => {
-      const xrApi = (navigator as Navigator & { xr?: { isSessionSupported: (mode: string) => Promise<boolean> } })
-        .xr
-      if (!xrApi?.isSessionSupported) {
-        if (active) setXrStatus('unavailable')
-        return
-      }
-      try {
-        const supported = await xrApi.isSessionSupported('immersive-vr')
-        if (active) setXrStatus(supported ? 'available' : 'unavailable')
-      } catch {
-        if (active) setXrStatus('unavailable')
-      }
-    }
-
-    detectXr()
-    return () => {
-      active = false
-    }
   }, [])
 
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
