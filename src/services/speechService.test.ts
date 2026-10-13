@@ -24,7 +24,11 @@ describe('speechService', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.unstubAllEnvs()
+    vi.stubEnv('VITE_AURORA_SPEECH_ENABLED', '')
+    vi.stubEnv('VITE_SUPABASE_URL', '')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
     Object.defineProperty(globalThis, 'window', {
       value: {
         ...((originalWindow as object) || {}),
@@ -39,6 +43,7 @@ describe('speechService', () => {
   })
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     vi.unstubAllEnvs()
     if (originalWindow === undefined) {
       delete (globalThis as { window?: unknown }).window
@@ -49,7 +54,17 @@ describe('speechService', () => {
 
   describe('speechAvailable and browserSpeechAvailable', () => {
     it('returns false when cloud speech env is not set', () => {
+      vi.stubEnv('VITE_AURORA_SPEECH_ENABLED', '')
+      vi.stubEnv('VITE_SUPABASE_URL', '')
+      vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
       expect(speechAvailable()).toBe(false)
+    })
+
+    it('returns true when cloud speech env is fully configured', () => {
+      vi.stubEnv('VITE_SUPABASE_URL', 'https://aurora.supabase.co')
+      vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key')
+      vi.stubEnv('VITE_AURORA_SPEECH_ENABLED', 'true')
+      expect(speechAvailable()).toBe(true)
     })
 
     it('reports browserSpeechAvailable correctly based on window object', () => {
@@ -152,6 +167,7 @@ describe('speechService', () => {
     })
 
     it('throws when cloud speech is not configured', async () => {
+      vi.stubEnv('VITE_AURORA_SPEECH_ENABLED', '')
       await expect(generateAuroraSpeech(mockSession, 'Hello Aurora')).rejects.toThrow('Aurora’s voice is not configured yet.')
     })
 
