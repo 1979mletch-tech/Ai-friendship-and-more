@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../services/authService'
+import { getVoiceStyle, isDistressCue } from '../features/companion/voiceStyle'
 import {
   browserSpeechAvailable,
   generateAuroraSpeech,
@@ -121,7 +122,10 @@ export function AuroraPresence({ latestReply, onTranscript, session, aiBusy = fa
       activeSourceRef.current = 'device'
       setPlaybackState('playing')
       setVoiceStatus(initialStatus || 'Aurora is speaking.')
+      const style = getVoiceStyle(false, isDistressCue(text))
       const handle = speakWithBrowserSynthesis(text, {
+        rate: style.rate,
+        pitch: style.pitch,
         onStart: () => {
           if (id === playbackId.current) {
             setPlaybackState('playing')
