@@ -114,9 +114,11 @@ describe('speechService', () => {
         cancel: () => { cancelCalled = true },
         pause: () => {
           paused = true
+          win.speechSynthesis.paused = true
         },
         resume: () => {
           paused = false
+          win.speechSynthesis.paused = false
         },
         speak: (utterance: any) => {
           spokenUtterance = utterance
