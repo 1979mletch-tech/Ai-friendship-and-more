@@ -37,6 +37,16 @@ Deno.serve(async (req) => {
   if (quotaError) return json('Speech request limit unavailable', 503)
   if (!reserved) return json('Too many requests. Please wait a moment.', 429)
 
+  const allowedVoices = ['shimmer', 'nova', 'alloy', 'echo', 'fable', 'onyx']
+  const requestedVoice = typeof (body as { voice?: unknown } | null)?.voice === 'string'
+    ? (body as { voice: string }).voice.toLowerCase().trim()
+    : ''
+  const envVoice = (Deno.env.get('OPENAI_TTS_VOICE') || '').toLowerCase().trim()
+  const voice = allowedVoices.includes(requestedVoice)
+    ? requestedVoice
+    : (allowedVoices.includes(envVoice) ? envVoice : 'shimmer')
+  const model = Deno.env.get('OPENAI_TTS_MODEL') || 'tts-1'
+
   const clientRequestId = crypto.randomUUID()
   let response: Response
   try {
@@ -44,17 +54,21 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Client-Request-Id': clientRequestId },
       body: JSON.stringify({
-        model: 'gpt-4o-mini-tts',
-        voice: 'marin',
+        model,
+        voice,
         input: text.trim(),
-        instructions: 'Speak as Aurora in English with a gentle, subtle Polish accent. Use a calm, soft, distinctly feminine and naturally warm conversational voice. Sound reassuring and emotionally present, with a serene slightly dreamy quality. Keep the pace relaxed and unhurried, with smooth fluid intonation, clear articulation, natural short pauses and gentle warmth. Keep the Polish accent light and consistent rather than exaggerated. Be intimate without whispering, breathiness or exaggerated sensuality. Avoid theatrical emphasis, chirpy enthusiasm, harshness, monotone cadence or anything robotic. Use conversational prosody rather than a narrator cadence: vary pace slightly with meaning, allow tiny natural pauses around thoughts, soften sentence endings, and let humour or good news carry a restrained smile in the voice. Do not make every sentence equally soothing or emotionally flat. Every line should still sound composed, warm and easy to listen to.',
         response_format: 'mp3',
+        speed: 0.92,
       }),
       signal: AbortSignal.timeout(25_000),
     })
   } catch { console.error('speech_request_failed', { requestId: clientRequestId }); return json('Speech provider unavailable', 502) }
   const requestId = response.headers.get('x-request-id') || clientRequestId
-  if (!response.ok) { console.error('speech_response_error', { status: response.status, requestId }); return json(response.status === 429 ? 'Aurora voice is busy. Please try again shortly.' : 'Speech provider unavailable', response.status === 429 ? 429 : 502) }
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '')
+    console.error('speech_response_error', { status: response.status, requestId, error: errorBody })
+    return json(response.status === 429 ? 'Aurora voice is busy. Please try again shortly.' : 'Speech provider unavailable', response.status === 429 ? 429 : 502)
+  }
   const bytes = await response.arrayBuffer()
   if (!bytes.byteLength || bytes.byteLength > 4_000_000) return json('Invalid speech response', 502)
   return new Response(bytes, { headers: { ...cors, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } })

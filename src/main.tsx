@@ -15,8 +15,14 @@ import { registerAuroraServiceWorker } from './registerServiceWorker'
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Aurora application root is missing.')
 
+let hasMounted = false
+
 const showBootFailure = () => {
-  if (document.getElementById('aurora-boot-failure')) return
+  if (hasMounted || document.getElementById('aurora-boot-failure')) return
+  if (rootElement.childElementCount > 0) {
+    hasMounted = true
+    return
+  }
   const panel = document.createElement('main')
   panel.id = 'aurora-boot-failure'
   panel.setAttribute('role', 'alert')
@@ -45,3 +51,4 @@ createRoot(rootElement).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+hasMounted = true
