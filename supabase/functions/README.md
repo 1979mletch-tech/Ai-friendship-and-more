@@ -18,6 +18,17 @@ Requires a signed-in account and a deliberate start action. Redirects to Stripe 
 
 Server secrets: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL`, `APP_RETURN_URL`, `BILLING_LIVE_ENABLED`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_ORIGIN`. The webhook destination is `https://<PROJECT_REF>.supabase.co/functions/v1/stripe-webhook`. Subscribe to `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`. Do not reuse the AI Doctor Stripe products or prices without creating and checking AI Friendship's own products and descriptions.
 
+## speak
+
+Requires an authenticated bearer session and `app_metadata.adult_verified === true`. Unverified users are rejected with status 403. Uses OpenAI Audio Speech generation with `model: "tts-1"` and voice `shimmer` (configurable via `OPENAI_TTS_VOICE`) calibrated to `speed: 0.92`. Shares atomic per-user request allowance (`reserve_ai_request`) to prevent unbounded API spend. Requires server secrets: `OPENAI_API_KEY`, `ALLOWED_ORIGIN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and optional `OPENAI_TTS_VOICE`/`OPENAI_TTS_MODEL`.
+
+## owner-aurora
+
+Private workspace function for the platform owner. Authenticates the Supabase bearer session and requires both `app_metadata.owner_aurora === true` and `app_metadata.adult_verified === true`. Client flags or email addresses alone cannot grant owner access. Provides:
+1. `status` action: returns booleans for project-wide configuration gates (AI provider, speech, live billing, webhook signing secret, adult verification, origin matching) without exposing any raw secrets.
+2. `chat` action: private workspace conversation scoped to owner planning, without accessing customer chat or billing rows.
+Requires server secrets: `ALLOWED_ORIGIN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and optional `OPENAI_API_KEY`.
+
 Set one restrictive `ALLOWED_ORIGIN` for the actual HTTPS frontend origin. Do not expose service-role, Stripe secret, restricted Identity key, webhook signing secret or AI-provider secret to the browser.
 
 Local browser data uses distinct guest and per-account keys. Existing unscoped data remains guest data; users should review or export it before switching accounts. Staging must verify two-account isolation and deletion against a deployed database.

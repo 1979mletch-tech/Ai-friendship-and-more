@@ -48,7 +48,12 @@ export const signIn = async (email: string, password: string) => {
   if (!password) throw new Error('Enter your password.')
   return normalizeSession(await request('token?grant_type=password', { email: checkedEmail(email), password }))
 }
-export const requestPasswordReset = async (email: string) => { await request('recover', { email: checkedEmail(email) }) }
+export const requestPasswordReset = async (email: string) => {
+  const redirectTo = typeof window !== 'undefined'
+    ? window.location.origin + import.meta.env.BASE_URL + '?return=password-recovery'
+    : ''
+  await request('recover', { email: checkedEmail(email), redirect_to: redirectTo })
+}
 
 export const saveSession = (session: AuthSession | null) => {
   if (!session) localStorage.removeItem(SESSION_KEY)

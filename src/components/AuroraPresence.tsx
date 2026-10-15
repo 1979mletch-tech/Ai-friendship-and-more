@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
 import type { AuthSession } from '../services/authService'
-import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
-import { getAuroraDaypart, inferAuroraScene, type AuroraScene } from '../utils/auroraActivity'
-import { inferAuroraReaction, type AuroraReaction } from '../utils/auroraReaction'
-import { AuroraFigure } from './AuroraFigure'
-import '../auroraMotion.css'
+import {
+  browserSpeechAvailable,
+  generateAuroraSpeech,
+  speakWithBrowserSynthesis,
+  speechAvailable,
+  type BrowserSpeechHandle,
+} from '../services/speechService'
 
 const VOICE_SAMPLE = "Hi, I'm Aurora. It's lovely to meet you. What shall we talk about?"
 
@@ -22,52 +23,10 @@ type Recognition = {
 }
 type RecognitionConstructor = new () => Recognition
 
-const sceneCopy: Record<AuroraScene, { label: string; status: string }> = {
-  together: { label: 'Together', status: 'Aurora is here with you.' },
-  walk: { label: 'Walk', status: 'Aurora is walking alongside you on screen.' },
-  exercise: { label: 'Exercise', status: 'Aurora is moving and stretching with you on screen.' },
-  relax: { label: 'Relax', status: 'Aurora is settling down with you.' },
-  sleep: { label: 'Sleep', status: 'Aurora is in a quiet bedtime scene.' },
-}
+type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused'
+type AudioSource = 'cloud' | 'device' | null
 
-const reactionCopy: Record<AuroraReaction, string> = {
-  neutral: 'Present',
-  warm: 'Warmly with you',
-  amused: 'Sharing the smile',
-  celebrate: 'Celebrating with you',
-  encourage: 'Encouraging you',
-  calm: 'Keeping things calm',
-  focus: 'Focused with you',
-  concerned: 'Listening closely',
-}
-
-const momentStarters: Array<{ label: string; scene: AuroraScene; prompt: string }> = [
-  { label: 'Walk with me', scene: 'walk', prompt: "I'm going for a walk. Keep me company and chat with me while I go." },
-  { label: 'Stretch with me', scene: 'exercise', prompt: "Let's do a gentle stretch together. Keep me company and help me stay focused." },
-  { label: 'Wind down', scene: 'relax', prompt: "I'm winding down. Keep me company with a calm conversation." },
-  { label: 'Focus together', scene: 'together', prompt: 'Help me focus on one useful next step and stay with me while I work through it.' },
-  { label: 'Bedtime chat', scene: 'sleep', prompt: "I'm getting ready for bed. Keep me company while I wind down." },
-]
-
-const readPresenceSetting = <T,>(key: string, fallback: T): T => {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw === null ? fallback : JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-const savePresenceSetting = (key: string, value: unknown) => {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage can be unavailable */ }
-}
-
-export function AuroraPresence({
-  latestReply,
-  onTranscript,
-  session,
-  aiBusy = false,
-}: {
+export function AuroraPresence({ latestReply, onTranscript, session, aiBusy = false }: {
   latestReply?: string
   onTranscript: (text: string) => void
   session: AuthSession | null
@@ -75,179 +34,226 @@ export function AuroraPresence({
 }) {
   const recognitionRef = useRef<Recognition | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
   const urlRef = useRef<string | null>(null)
+  const browserSpeechHandleRef = useRef<BrowserSpeechHandle | null>(null)
   const playbackId = useRef(0)
-  const lastAutoSpokenRef = useRef('')
+  const lastSpokenTextRef = useRef<string>('')
+  const activeSourceRef = useRef<AudioSource>(null)
+
   const [listening, setListening] = useState(false)
-  const [speaking, setSpeaking] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [playbackState, setPlaybackState] = useState<PlaybackState>('idle')
   const [voiceStatus, setVoiceStatus] = useState('')
-  const [scene, setScene] = useState<AuroraScene>('together')
-  const [reaction, setReaction] = useState<AuroraReaction>('neutral')
-  const [autoFollow, setAutoFollow] = useState(true)
-  const [autoSpeak, setAutoSpeak] = useState(false)
-  const [voiceEnergy, setVoiceEnergy] = useState(0)
-  const [speechPulse, setSpeechPulse] = useState(0)
-  const [externalAiBusy, setExternalAiBusy] = useState(false)
-  const [engagement, setEngagement] = useState<'idle' | 'engaged'>('idle')
-  const [gaze, setGaze] = useState<'center' | 'left' | 'right'>('center')
-  const daypart = getAuroraDaypart()
-  const available = speechAvailable() && Boolean(session)
-  const motionState = speaking ? 'speaking' : listening ? 'listening' : aiBusy || externalAiBusy || loading ? 'thinking' : scene
-  const presenceKey = `ai_aurora_presence:${session?.user.id ?? 'guest'}`
+  const [lastSpoken, setLastSpoken] = useState('')
+
+  const cloudEnabled = speechAvailable() && Boolean(session)
+  const deviceEnabled = browserSpeechAvailable()
+  const canSpeak = cloudEnabled || deviceEnabled
+
   const recognitionType = typeof window !== 'undefined'
     ? (window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }).SpeechRecognition
       ?? (window as Window & { webkitSpeechRecognition?: RecognitionConstructor }).webkitSpeechRecognition
     : undefined
 
-  const stopVoiceMeter = () => {
-    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
-    animationFrameRef.current = null
-    analyserRef.current = null
-    setVoiceEnergy(0)
-    setSpeechPulse(0)
+  const clearAudioElements = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
+      audioRef.current = null
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current)
+      urlRef.current = null
+    }
+    if (browserSpeechHandleRef.current) {
+      browserSpeechHandleRef.current.stop()
+      browserSpeechHandleRef.current = null
+    }
+    activeSourceRef.current = null
   }
 
-  const startVoiceMeter = (audio: HTMLAudioElement) => {
-    try {
-      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!AudioContextCtor) return
-      const context = audioContextRef.current ?? new AudioContextCtor()
-      audioContextRef.current = context
-      const source = context.createMediaElementSource(audio)
-      const analyser = context.createAnalyser()
-      analyser.fftSize = 64
-      source.connect(analyser)
-      analyser.connect(context.destination)
-      analyserRef.current = analyser
-      const samples = new Uint8Array(analyser.frequencyBinCount)
-      const tick = () => {
-        analyser.getByteFrequencyData(samples)
-        const average = samples.reduce((sum, sample) => sum + sample, 0) / Math.max(1, samples.length)
-        const energy = Math.min(1, average / 110)
-        setVoiceEnergy(energy)
-        setSpeechPulse((current) => current * 0.72 + energy * 0.28)
-        animationFrameRef.current = requestAnimationFrame(tick)
-      }
-      tick()
-    } catch {
-      setVoiceEnergy(0)
+  const stopPlayback = (clearStatus = true) => {
+    playbackId.current += 1
+    clearAudioElements()
+    setPlaybackState('idle')
+    if (clearStatus) setVoiceStatus('')
+  }
+
+  const pausePlayback = () => {
+    if (playbackState !== 'playing') return
+    if (activeSourceRef.current === 'cloud' && audioRef.current) {
+      audioRef.current.pause()
+      setPlaybackState('paused')
+      setVoiceStatus('Voice paused.')
+    } else if (activeSourceRef.current === 'device' && browserSpeechHandleRef.current) {
+      browserSpeechHandleRef.current.pause()
+      setPlaybackState('paused')
+      setVoiceStatus('Voice paused.')
     }
   }
 
-  const stopPlayback = () => {
-    playbackId.current += 1
-    audioRef.current?.pause()
-    audioRef.current = null
-    stopVoiceMeter()
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-    urlRef.current = null
-    setSpeaking(false)
-    setLoading(false)
+  const resumePlayback = () => {
+    if (playbackState !== 'paused') return
+    if (activeSourceRef.current === 'cloud' && audioRef.current) {
+      audioRef.current.play().then(() => {
+        setPlaybackState('playing')
+        setVoiceStatus('Aurora is speaking.')
+      }).catch(() => {
+        stopPlayback()
+        setVoiceStatus('Audio could not resume on this device.')
+      })
+    } else if (activeSourceRef.current === 'device' && browserSpeechHandleRef.current) {
+      browserSpeechHandleRef.current.resume()
+      setPlaybackState('playing')
+      setVoiceStatus('Aurora is speaking.')
+    }
+  }
+
+  const replayPlayback = () => {
+    const textToReplay = lastSpokenTextRef.current || latestReply || VOICE_SAMPLE
+    if (textToReplay) {
+      void play(textToReplay)
+    }
+  }
+
+  const playWithDeviceSynthesis = (text: string, id: number, initialStatus?: string) => {
+    try {
+      activeSourceRef.current = 'device'
+      setPlaybackState('playing')
+      setVoiceStatus(initialStatus || 'Aurora is speaking.')
+      const handle = speakWithBrowserSynthesis(text, {
+        onStart: () => {
+          if (id === playbackId.current) {
+            setPlaybackState('playing')
+            setVoiceStatus('Aurora is speaking.')
+          }
+        },
+        onEnd: () => {
+          if (id === playbackId.current) {
+            clearAudioElements()
+            setPlaybackState('idle')
+            setVoiceStatus('')
+          }
+        },
+        onError: (err) => {
+          if (id === playbackId.current) {
+            clearAudioElements()
+            setPlaybackState('idle')
+            setVoiceStatus(err.message || 'Device voice error.')
+          }
+        },
+        onPause: () => {
+          if (id === playbackId.current) {
+            setPlaybackState('paused')
+            setVoiceStatus('Voice paused.')
+          }
+        },
+        onResume: () => {
+          if (id === playbackId.current) {
+            setPlaybackState('playing')
+            setVoiceStatus('Aurora is speaking.')
+          }
+        },
+      })
+      browserSpeechHandleRef.current = handle
+    } catch (err) {
+      if (id === playbackId.current) {
+        clearAudioElements()
+        setPlaybackState('idle')
+        setVoiceStatus(err instanceof Error ? err.message : 'Could not play audio.')
+      }
+    }
   }
 
   const play = async (text: string) => {
-    if (!session || !available || !text.trim()) return
-    stopPlayback()
-    const id = playbackId.current
-    setLoading(true)
-    setVoiceStatus('Preparing Aurora’s voice…')
-    try {
-      const blob = await generateAuroraSpeech(session, text)
-      if (id !== playbackId.current) return
-      const url = URL.createObjectURL(blob)
-      urlRef.current = url
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = () => { if (id === playbackId.current) stopPlayback() }
-      audio.onerror = () => { if (id === playbackId.current) { stopPlayback(); setVoiceStatus('Audio could not play on this device.') } }
-      await audio.play()
-      if (id === playbackId.current) {
-        startVoiceMeter(audio)
-        setLoading(false)
-        setSpeaking(true)
-        setVoiceStatus('')
+    const clean = text.trim()
+    if (!clean) return
+    lastSpokenTextRef.current = clean
+    setLastSpoken(clean)
+    stopPlayback(false)
+
+    const id = ++playbackId.current
+
+    // Try cloud speech first if available and user is authenticated
+    if (cloudEnabled && session) {
+      setPlaybackState('loading')
+      setVoiceStatus('Preparing Aurora’s voice…')
+      try {
+        const blob = await generateAuroraSpeech(session, clean)
+        if (id !== playbackId.current) return
+        const url = URL.createObjectURL(blob)
+        urlRef.current = url
+        const audio = new Audio(url)
+        audio.preload = 'auto'
+        audioRef.current = audio
+        activeSourceRef.current = 'cloud'
+
+        audio.onended = () => {
+          if (id !== playbackId.current) return
+          clearAudioElements()
+          setPlaybackState('idle')
+          setVoiceStatus('')
+        }
+        audio.onerror = () => {
+          if (id !== playbackId.current) return
+          clearAudioElements()
+          // Fall back to device speech if browser speech is available
+          if (deviceEnabled) {
+            playWithDeviceSynthesis(clean, id, 'Audio playback failed. Playing with device voice.')
+          } else {
+            setPlaybackState('idle')
+            setVoiceStatus('Audio could not play on this device. Check media volume and try again.')
+          }
+        }
+
+        await audio.play()
+        if (id === playbackId.current) {
+          setPlaybackState('playing')
+          setVoiceStatus('Aurora is speaking.')
+        }
+        return
+      } catch (error) {
+        if (id !== playbackId.current) return
+        clearAudioElements()
+        // If cloud speech fails, gracefully fall back to device speech if available
+        if (deviceEnabled) {
+          const reason = error instanceof Error ? error.message : 'Cloud voice unavailable'
+          playWithDeviceSynthesis(clean, id, `Aurora speaking with device voice (${reason}).`)
+          return
+        }
+        setPlaybackState('idle')
+        setVoiceStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.')
+        return
       }
-    } catch (error) {
-      if (id === playbackId.current) { stopPlayback(); setVoiceStatus(error instanceof Error ? error.message : 'Aurora’s voice is unavailable.') }
     }
+
+    // If cloud speech is not available, use device speech synthesis
+    if (deviceEnabled) {
+      playWithDeviceSynthesis(clean, id)
+      return
+    }
+
+    setVoiceStatus('Voice is not supported in this browser. Please try another browser.')
   }
-
-  useEffect(() => {
-    const saved = readPresenceSetting<{ scene?: AuroraScene; autoFollow?: boolean }>(presenceKey, {})
-    if (saved.scene && saved.scene in sceneCopy) setScene(saved.scene)
-    setAutoFollow(saved.autoFollow !== false)
-    setAutoSpeak(false)
-    lastAutoSpokenRef.current = latestReply ?? ''
-  }, [presenceKey])
-
-  useEffect(() => {
-    savePresenceSetting(presenceKey, { scene, autoFollow })
-  }, [presenceKey, scene, autoFollow])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    let timer = 0
-    const scheduleGaze = () => {
-      timer = window.setTimeout(() => {
-        setGaze((current) => current === 'center' ? (Date.now() % 2 ? 'left' : 'right') : 'center')
-        scheduleGaze()
-      }, 4200 + Math.floor(Math.random() * 3800))
-    }
-    scheduleGaze()
-    return () => window.clearTimeout(timer)
-  }, [])
-
-  useEffect(() => {
-    const handleAiBusy = (event: Event) => setExternalAiBusy(Boolean((event as CustomEvent<boolean>).detail))
-    const handleUserMessage = (event: Event) => {
-      const text = (event as CustomEvent<string>).detail
-      if (typeof text !== 'string') return
-      setReaction(inferAuroraReaction(text))
-      setEngagement('engaged')
-      window.setTimeout(() => setEngagement('idle'), 6500)
-      if (!autoFollow) return
-      const nextScene = inferAuroraScene(text)
-      if (nextScene) setScene(nextScene)
-    }
-    window.addEventListener('aurora-ai-busy', handleAiBusy)
-    window.addEventListener('aurora-user-message', handleUserMessage)
-    return () => {
-      window.removeEventListener('aurora-ai-busy', handleAiBusy)
-      window.removeEventListener('aurora-user-message', handleUserMessage)
-    }
-  }, [autoFollow])
-
-  useEffect(() => {
-    if (!latestReply) return
-    const nextReaction = inferAuroraReaction(latestReply)
-    if (nextReaction !== 'neutral') setReaction(nextReaction)
-  }, [latestReply])
-
-  useEffect(() => {
-    if (!autoSpeak || !available || !latestReply || latestReply === lastAutoSpokenRef.current) return
-    lastAutoSpokenRef.current = latestReply
-    void play(latestReply)
-  }, [autoSpeak, available, latestReply])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
+    recognitionRef.current = null
     playbackId.current += 1
-    audioRef.current?.pause()
-    stopVoiceMeter()
-    void audioContextRef.current?.close().catch(() => undefined)
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    clearAudioElements()
   }, [])
 
-  useEffect(() => () => {
-    playbackId.current += 1
-    audioRef.current?.pause()
-    stopVoiceMeter()
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-  }, [session?.user.id])
+  const userId = session?.user.id
+  const prevUserIdRef = useRef(userId)
+  useEffect(() => {
+    if (prevUserIdRef.current !== userId) {
+      prevUserIdRef.current = userId
+      recognitionRef.current?.stop()
+      recognitionRef.current = null
+      setListening(false)
+      stopPlayback()
+    }
+  }, [userId])
 
   const toggleListening = () => {
     if (listening) {
@@ -264,106 +270,150 @@ export function AuroraPresence({
       const transcript = event.results[0]?.[0]?.transcript?.trim()
       if (transcript) {
         onTranscript(transcript)
-        setReaction(inferAuroraReaction(transcript))
         setVoiceStatus('Voice draft added. Review it before sending.')
       }
     }
-    recognition.onerror = () => { setListening(false); setVoiceStatus('Microphone unavailable. You can type instead.') }
+    recognition.onerror = () => {
+      setListening(false)
+      setVoiceStatus('Microphone unavailable. You can type instead.')
+    }
     recognition.onend = () => setListening(false)
     recognitionRef.current = recognition
-    try { recognition.start(); setListening(true); setVoiceStatus('Listening…') }
-    catch { setVoiceStatus('Microphone unavailable. You can type instead.') }
+    try {
+      recognition.start()
+      setListening(true)
+      setVoiceStatus('Listening…')
+    } catch {
+      setVoiceStatus('Microphone unavailable. You can type instead.')
+    }
   }
 
-  const startSharedMoment = (nextScene: AuroraScene, prompt: string) => {
-    setScene(nextScene)
-    setReaction(nextScene === 'sleep' || nextScene === 'relax' ? 'calm' : nextScene === 'together' ? 'focus' : 'neutral')
-    onTranscript(prompt)
-  }
+  const isSpeaking = playbackState === 'playing'
+  const isLoading = playbackState === 'loading'
+  const isPaused = playbackState === 'paused'
 
   return (
-    <div
-      className={`aurora-presence aurora-motion-${motionState} aurora-scene-${scene}`}
-      data-motion-state={motionState}
-      data-scene={scene}
-      data-daypart={daypart}
-      data-reaction={reaction}
-      data-engagement={engagement}
-      data-gaze={gaze}
-      style={{ '--aurora-voice-energy': voiceEnergy.toFixed(3), '--aurora-speech-pulse': speechPulse.toFixed(3) } as CSSProperties}
-    >
-      <div className="aurora-world" aria-label={`Aurora scene: ${sceneCopy[scene].label}`}>
-        <div className="aurora-sky" aria-hidden="true" />
-        <div className="aurora-horizon" aria-hidden="true" />
-        <div className="aurora-path" aria-hidden="true" />
-        <div className="aurora-exercise-mat" aria-hidden="true" />
-        <div className="aurora-chair" aria-hidden="true" />
-        <div className="aurora-bed" aria-hidden="true"><span className="aurora-pillow" /><span className="aurora-blanket" /></div>
-        <div className="aurora-character"><AuroraFigure /></div>
-        <div className="aurora-world-status" aria-live="polite">{sceneCopy[scene].status}</div>
-        <div className="aurora-reaction-label" aria-hidden="true">{reactionCopy[reaction]}</div>
+    <div className="aurora-presence aurora-presence-premium">
+      <div className={`aurora-portrait-card ${isSpeaking ? 'is-speaking' : ''} ${isPaused ? 'is-paused' : ''}`}>
+        <img
+          className="aurora-live-portrait"
+          src={`${import.meta.env.BASE_URL}aurora-portrait.webp`}
+          alt="Aurora, a fictional adult AI companion"
+        />
+        <div className="aurora-live-badge" aria-live="polite">
+          <span
+            className={
+              aiBusy
+                ? 'aurora-status-dot busy'
+                : isSpeaking
+                  ? 'aurora-status-dot speaking'
+                  : 'aurora-status-dot'
+            }
+          />
+          {aiBusy
+            ? 'Aurora is thinking'
+            : isLoading
+              ? 'Preparing voice…'
+              : isSpeaking
+                ? 'Aurora is speaking'
+                : isPaused
+                  ? 'Voice paused'
+                  : listening
+                    ? 'Listening'
+                    : 'Aurora'}
+        </div>
       </div>
 
       <div className="aurora-presence-copy">
-        <p className="eyebrow">MEET AI AURORA</p>
-        <h2>A companion who can share the moment</h2>
-        <p className="small">Aurora is a fictional AI character. Her scenes are animated illustrations, and her optional voice is AI generated. She can keep you company during everyday activities without pretending to be physically present.</p>
-        <p className="small">Voice profile: calm, gentle feminine English with a subtle Polish-accented feel.</p>
+        <p className="eyebrow">AURORA</p>
+        <h2>Talk naturally. Hear her reply.</h2>
+        <p className="small">Aurora is an AI companion. Chat is private to your account, and voice is optional.</p>
 
-        <div className="aurora-moment-starters" role="group" aria-label="Shared moments with Aurora">
-          {momentStarters.map((item) => (
-            <button key={item.label} type="button" onClick={() => startSharedMoment(item.scene, item.prompt)}>{item.label}</button>
-          ))}
-        </div>
-
-        <div className="aurora-activity-controls" role="group" aria-label="Aurora activity">
-          {(Object.keys(sceneCopy) as AuroraScene[]).map((nextScene) => (
-            <button
-              key={nextScene}
-              type="button"
-              className={scene === nextScene ? 'active' : ''}
-              onClick={() => setScene(nextScene)}
-              aria-pressed={scene === nextScene}
-            >
-              {sceneCopy[nextScene].label}
-            </button>
-          ))}
-        </div>
-
-        <div className="aurora-presence-options" role="group" aria-label="Aurora presence options">
-          <button type="button" onClick={() => setAutoFollow((current) => !current)} aria-pressed={autoFollow}>
-            Follow activity: {autoFollow ? 'On' : 'Off'}
-          </button>
+        <div className="voice-controls" role="group" aria-label="Voice playback controls">
           <button
             type="button"
-            disabled={!available}
-            onClick={() => setAutoSpeak((current) => {
-              const next = !current
-              if (next) lastAutoSpokenRef.current = latestReply ?? ''
-              else stopPlayback()
-              return next
-            })}
-            aria-pressed={autoSpeak}
+            onClick={toggleListening}
+            disabled={!recognitionType || aiBusy}
+            aria-pressed={listening}
           >
-            Speak new replies: {autoSpeak ? 'On' : 'Off'}
-          </button>
-        </div>
-
-        <p className="small" aria-live="polite">Aurora motion: {motionState}. Scene: {sceneCopy[scene].label}. Reaction: {reactionCopy[reaction]}. Ambience: {daypart}.</p>
-        <div className="voice-controls">
-          <button type="button" onClick={toggleListening} disabled={!recognitionType} aria-pressed={listening}>
             {listening ? 'Stop listening' : 'Speak a message'}
           </button>
-          <button type="button" onClick={() => speaking || loading ? stopPlayback() : void play(VOICE_SAMPLE)} disabled={!available} aria-pressed={speaking}>
-            {loading ? 'Stop loading' : speaking ? 'Stop voice' : 'Hear Aurora sample'}
-          </button>
-          <button type="button" onClick={() => speaking || loading ? stopPlayback() : latestReply && void play(latestReply)} disabled={!available || !latestReply} aria-pressed={speaking}>
-            {speaking || loading ? 'Stop voice' : 'Hear latest reply'}
-          </button>
+
+          {isLoading && (
+            <button type="button" onClick={() => stopPlayback()}>
+              Stop loading
+            </button>
+          )}
+
+          {isSpeaking && (
+            <>
+              <button type="button" onClick={pausePlayback} aria-label="Pause voice playback">
+                Pause voice
+              </button>
+              <button type="button" onClick={() => stopPlayback()} aria-label="Stop voice playback">
+                Stop voice
+              </button>
+            </>
+          )}
+
+          {isPaused && (
+            <>
+              <button type="button" onClick={resumePlayback} aria-label="Resume voice playback">
+                Resume voice
+              </button>
+              <button type="button" onClick={replayPlayback} aria-label="Replay voice from beginning">
+                Replay voice
+              </button>
+              <button type="button" onClick={() => stopPlayback()} aria-label="Stop voice playback">
+                Stop voice
+              </button>
+            </>
+          )}
+
+          {!isLoading && !isSpeaking && !isPaused && (
+            <>
+              <button
+                type="button"
+                onClick={() => void play(VOICE_SAMPLE)}
+                disabled={!canSpeak || aiBusy}
+              >
+                Hear Aurora
+              </button>
+              <button
+                type="button"
+                onClick={() => latestReply && void play(latestReply)}
+                disabled={!canSpeak || !latestReply || aiBusy}
+              >
+                Hear latest reply
+              </button>
+              {Boolean(lastSpoken) && (
+                <button
+                  type="button"
+                  onClick={replayPlayback}
+                  disabled={!canSpeak || aiBusy}
+                  aria-label="Replay last spoken message"
+                >
+                  Replay voice
+                </button>
+              )}
+            </>
+          )}
         </div>
-        {!available && <p className="small">Aurora’s voice becomes available after sign-in, adult verification and speech service setup. Text chat remains available.</p>}
-        {!recognitionType && <p className="small">Microphone input is unavailable in this browser. You can type instead.</p>}
-        {voiceStatus && <p className="small" role="status">{voiceStatus}</p>}
+
+        {!canSpeak && (
+          <p className="small">Sign in and complete adult verification to enable Aurora’s generated voice.</p>
+        )}
+        {canSpeak && !cloudEnabled && deviceEnabled && (
+          <p className="small">Device voice preview active. Sign in with adult verification for natural cloud voice.</p>
+        )}
+        {!recognitionType && (
+          <p className="small">Microphone input is unavailable in this browser. You can type instead.</p>
+        )}
+        {voiceStatus && (
+          <p className="small" role="status" aria-live="polite">
+            {voiceStatus}
+          </p>
+        )}
       </div>
     </div>
   )

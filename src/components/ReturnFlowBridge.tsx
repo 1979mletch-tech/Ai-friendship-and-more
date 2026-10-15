@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { getBillingPlan } from '../services/billingService'
-import { loadSession, refreshSession, saveSession } from '../services/authService'
+import { completePasswordRecovery, loadSession, refreshSession, saveSession } from '../services/authService'
 import { finishAgeVerification, hasPendingAgeVerification } from '../services/ageVerificationService'
 import { clearReturnFlowFromUrl, parseReturnFlow } from '../utils/returnFlow'
 
-type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error'
+type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error' | 'password'
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
@@ -12,8 +12,21 @@ export function ReturnFlowBridge() {
   const [state, setState] = useState<FlowState>('idle')
   const [message, setMessage] = useState('')
   const [retry, setRetry] = useState(0)
+  const [recoveryToken, setRecoveryToken] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const recoveryAccessToken = hashParams.get('access_token') || params.get('access_token') || ''
+    const recoveryType = hashParams.get('type') || params.get('type') || ''
+    if (recoveryAccessToken && recoveryType === 'recovery') {
+      setRecoveryToken(recoveryAccessToken)
+      setState('password')
+      setMessage('Choose a new password for your Aurora account.')
+      return
+    }
     const flow = parseReturnFlow(window.location.search)
     if (!flow) return
     let active = true
@@ -27,20 +40,24 @@ export function ReturnFlowBridge() {
         return
       }
 
+      const userId = session.user.id
+      const stillSameAccount = () => active && loadSession()?.user.id === userId
+
       setState('working')
       if (flow.kind === 'billing-cancel') {
         clearReturnFlowFromUrl()
-        if (!active) return
+        if (!stillSameAccount()) return
         setState('cancelled')
         setMessage('Checkout was cancelled. No plan change was made.')
         window.location.hash = '/pricing'
         return
       }
 
+
       if (flow.kind === 'age-return') {
         if (!hasPendingAgeVerification(session)) {
           clearReturnFlowFromUrl()
-          if (!active) return
+          if (!stillSameAccount()) return
           setState('pending')
           setMessage('No pending age check was found on this device. You can start or check verification from Account.')
           window.location.hash = '/account'
@@ -48,10 +65,11 @@ export function ReturnFlowBridge() {
         }
         try {
           const result = await finishAgeVerification(session)
-          if (!active) return
+          if (!stillSameAccount()) return
           if (result.verified) {
             try {
               const fresh = await refreshSession(session)
+              if (!stillSameAccount() || fresh.user.id !== userId) return
               saveSession(fresh)
             } catch {
               // The server-side adult flag is already saved; a later auth refresh can pick it up.
@@ -69,7 +87,7 @@ export function ReturnFlowBridge() {
             : 'Verification is still processing. Use Retry status in a moment.')
           return
         } catch (error) {
-          if (!active) return
+          if (!stillSameAccount()) return
           setState('error')
           setMessage(error instanceof Error ? error.message : 'Could not finish age verification.')
           return
@@ -80,12 +98,13 @@ export function ReturnFlowBridge() {
         const delays = flow.kind === 'billing-success' ? [0, 700, 1400, 2500, 4000] : [0, 900]
         for (const delay of delays) {
           if (delay) await wait(delay)
-          if (!active) return
+          if (!stillSameAccount()) return
           try {
             const plan = await getBillingPlan(session)
+            if (!stillSameAccount()) return
             if (plan !== 'free') {
               clearReturnFlowFromUrl()
-              if (!active) return
+              if (!stillSameAccount()) return
               setState('success')
               setMessage(`Paid access is active (${plan.replace('pro-', '')}). Aurora is ready.`)
               window.location.hash = flow.kind === 'billing-success' ? '/chat' : '/pricing'
@@ -100,7 +119,7 @@ export function ReturnFlowBridge() {
             }
           }
         }
-        if (!active) return
+        if (!stillSameAccount()) return
         setState('pending')
         setMessage(flow.kind === 'billing-success'
           ? 'Stripe returned successfully, but paid access is still waiting for server confirmation. Retry status shortly.'
@@ -112,12 +131,36 @@ export function ReturnFlowBridge() {
     return () => { active = false }
   }, [retry])
 
+  const finishPasswordReset = async () => {
+    if (!recoveryToken) return
+    if (newPassword !== confirmPassword) { setMessage('The passwords do not match.'); return }
+    try {
+      await completePasswordRecovery(recoveryToken, newPassword)
+      window.history.replaceState({}, '', window.location.pathname + '#/account')
+      setRecoveryToken('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setState('success')
+      setMessage('Password updated. You can now sign in with your new password.')
+    } catch (error) {
+      setState('password')
+      setMessage(error instanceof Error ? error.message : 'Unable to update password.')
+    }
+  }
+
   if (state === 'idle') return null
 
   return (
     <aside className={`return-flow return-flow-${state}`} role="status" aria-live="polite">
       <strong>{state === 'working' ? 'Checking your account…' : state === 'success' ? 'Account updated' : state === 'cancelled' ? 'Checkout cancelled' : state === 'pending' ? 'Still confirming' : 'Account check needed'}</strong>
       {message && <span>{message}</span>}
+      {state === 'password' && (
+        <div className="return-flow-password">
+          <input type="password" autoComplete="new-password" placeholder="New password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          <input type="password" autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          <button type="button" onClick={() => void finishPasswordReset()}>Set new password</button>
+        </div>
+      )}
       {(state === 'pending' || state === 'error') && (
         <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry status</button>
       )}

@@ -3,8 +3,6 @@
 /* Human-like micro-presence: subtle, state-driven, never claims literal embodiment. */
 .aurora-rig{transform-origin:center 72%;animation:aurora-natural-breath 5.8s ease-in-out infinite}
 .aurora-presence[data-engagement="engaged"] .aurora-rig-head{animation:aurora-attend 1.8s ease-in-out 2}
-.aurora-presence[data-reaction="warm"] .aurora-rig-head,.aurora-presence[data-reaction="amused"] .aurora-rig-head{transform:rotate(1.4deg)}
-.aurora-presence[data-reaction="concerned"] .aurora-rig-head{transform:rotate(-2.2deg) translateY(1px)}
 .aurora-presence[data-reaction="celebrate"] .aurora-rig-arm-right{animation:aurora-small-wave 1.15s ease-in-out 2}
 .aurora-presence[data-reaction="amused"] .aurora-character{filter:brightness(1.035) saturate(1.04)}
 .aurora-presence[data-reaction="concerned"] .aurora-character{filter:saturate(.94) brightness(.98)}
@@ -19,11 +17,10 @@
 .aurora-motion-listening .aurora-rig{animation-duration:6.8s}
 .aurora-motion-thinking .aurora-rig{animation-duration:6.3s}
 
-.aurora-eye-detail{transition:transform .7s cubic-bezier(.2,.7,.2,1);transform-origin:center}
-.aurora-presence[data-gaze="left"] .aurora-eye-detail{transform:translateX(-1.5px)}
-.aurora-presence[data-gaze="right"] .aurora-eye-detail{transform:translateX(1.5px)}
-.aurora-motion-listening .aurora-eye-detail,.aurora-motion-speaking .aurora-eye-detail{transform:translateX(0)}
-.aurora-pupil{opacity:.72}
 
-.aurora-motion-speaking .aurora-rig-head{transform:translateY(calc(var(--aurora-speech-pulse,0)*-1.5px))}
-.aurora-motion-speaking .aurora-rig-torso{transform-box:fill-box;transform-origin:center 60%;transform:scaleY(calc(1 + var(--aurora-speech-pulse,0)*.002))}
+
+/* Keep reactions additive so they do not fight state-driven head transforms. */
+.aurora-presence[data-reaction="warm"] .aurora-rig,
+.aurora-presence[data-reaction="amused"] .aurora-rig{filter:brightness(1.012)}
+.aurora-presence[data-reaction="concerned"] .aurora-rig{filter:saturate(.97)}
+.aurora-motion-speaking .aurora-rig{animation-duration:calc(5.8s - var(--aurora-speech-pulse,0)*.8s)}
