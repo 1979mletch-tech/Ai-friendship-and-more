@@ -15,6 +15,16 @@ export interface BuildRushProfile {
   updatedAt: string
 }
 
+export type TradeCategory =
+  | 'plumbing'
+  | 'electrical'
+  | 'roofing'
+  | 'carpentry'
+  | 'heating'
+  | 'painting'
+  | 'locksmith'
+  | 'general'
+
 export type JobUrgency = 'today' | 'tomorrow' | 'within_48h' | 'flexible'
 export type JobStatus = 'open' | 'in_progress' | 'completed' | 'cancelled'
 
@@ -29,9 +39,12 @@ export interface BuildRushJob {
   postcode: string
   urgency: JobUrgency
   status: JobStatus
+  bidCount?: number
   createdAt: string
   updatedAt: string
 }
+
+export type Job = BuildRushJob
 
 export type BidStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn'
 

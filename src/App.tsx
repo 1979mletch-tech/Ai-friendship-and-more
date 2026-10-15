@@ -21,8 +21,10 @@ import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './uti
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
 import { getBillingStatus, openBilling, type BillingStatus } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
+import { OwnerHq } from './buildrush/components/OwnerHq'
+import { JobMarketplace } from './buildrush/components/JobMarketplace'
 
-type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive' | '/owner' | '/buildrush'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -51,9 +53,17 @@ const STORAGE_KEYS = {
 }
 
 const parseRoute = (): Route => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('thebuildrush.com')) {
+    const rawPath = (window.location.pathname || '') + (window.location.hash || '')
+    if (rawPath.includes('owner')) return '/owner'
+    return '/buildrush'
+  }
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/account' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
-    return hash
+  const normalized = hash.startsWith('/') ? hash : '/' + hash
+  if (normalized === '/owner') return '/owner'
+  if (normalized === '/buildrush') return '/buildrush'
+  if (normalized === '/chat' || normalized === '/history' || normalized === '/memory' || normalized === '/settings' || normalized === '/account' || normalized === '/pricing' || normalized === '/privacy' || normalized === '/immersive') {
+    return normalized as Route
   }
   return '/'
 }
@@ -787,6 +797,14 @@ const App = () => {
       <p className="small">This confirmation opens the browser preview on this device. It does not verify age for a live account or unlock live AI. After confirming, accept the chat disclosure to send a preview message.</p>
     </section>
   )
+
+  if (route === '/owner') {
+    return <OwnerHq />
+  }
+
+  if (route === '/buildrush') {
+    return <JobMarketplace />
+  }
 
   let page = renderHome()
   if (routeRequiresAdultGate(route) && !adultAccess) {

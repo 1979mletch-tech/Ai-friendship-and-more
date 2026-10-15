@@ -158,3 +158,15 @@ export class CustomerAiService {
     )
   }
 }
+
+export const customerAiService = new CustomerAiService()
+
+export async function sendCustomerMessage(params: {
+  message: string
+  userRole?: 'customer' | 'tradesperson'
+  sessionId?: string
+  authToken?: string
+}): Promise<CustomerAiResponse> {
+  return customerAiService.sendMessage(params.message, params.authToken)
+}
+

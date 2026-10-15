@@ -113,3 +113,31 @@ export function getPriceGuidanceForTrade(trade: string): TradeRateGuidance | nul
   }
   return null
 }
+
+export function getTradeCategoryGuidance(trade: string): {
+  displayName: string
+  typicalHourlyMin: number
+  typicalHourlyMax: number
+  minorJobMin: number
+  minorJobMax: number
+} {
+  const g = getPriceGuidanceForTrade(trade)
+  if (!g) {
+    return {
+      displayName: 'General Repair',
+      typicalHourlyMin: 40,
+      typicalHourlyMax: 75,
+      minorJobMin: 60,
+      minorJobMax: 120,
+    }
+  }
+  const sample = g.commonRepairs[0]
+  return {
+    displayName: g.trade,
+    typicalHourlyMin: g.typicalHourlyMin,
+    typicalHourlyMax: g.typicalHourlyMax,
+    minorJobMin: sample?.typicalMinGbp ?? 60,
+    minorJobMax: sample?.typicalMaxGbp ?? 120,
+  }
+}
+
