@@ -91,6 +91,28 @@ describe('BuildRush Security & Isolation Tests', () => {
       )
     })
 
+    it('fails closed if the server does not confirm log-only handling', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, executed: true }),
+      })
+      const ownerService = new OwnerAiService()
+
+      await expect(ownerService.confirmAndLogProposal(
+        {
+          id: 'prop-2',
+          proposalId: 'prop-2',
+          actionType: 'refund',
+          description: 'Refund requested',
+          parameters: {},
+          requiresOwnerConfirmation: true,
+          status: 'pending_confirmation',
+          createdAt: new Date().toISOString(),
+        },
+        'valid-owner-token',
+      )).rejects.toThrow(/execution is not available/i)
+    })
+
     it('loads owner dashboard metrics from the authenticated server endpoint', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,

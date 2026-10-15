@@ -25,10 +25,17 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
 }) => {
   const [ownerAi] = useState(() => new OwnerAiService())
   const [coreBrain] = useState(() => CoreBrainService.getInstance())
-  const [metrics, setMetrics] = useState<OwnerDashboardMetrics | null>(null)
-  const [accessState, setAccessState] = useState<'loading' | 'ready' | 'signed-out' | 'forbidden' | 'unavailable'>(
-    authToken ? 'loading' : 'signed-out',
-  )
+  const [accessResult, setAccessResult] = useState<{
+    token: string
+    status: 'ready' | 'forbidden' | 'unavailable'
+    metrics: OwnerDashboardMetrics | null
+  } | null>(null)
+  const accessState = !authToken
+    ? 'signed-out'
+    : accessResult?.token !== authToken
+      ? 'loading'
+      : accessResult.status
+  const metrics = accessResult?.token === authToken ? accessResult.metrics : null
 
   const [chatMessages, setChatMessages] = useState(ownerAi.getMessages())
   const [chatInput, setChatInput] = useState('')
@@ -40,21 +47,19 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
   const [auditLogs, setAuditLogs] = useState<OwnerAuditLog[]>([])
 
   useEffect(() => {
-    if (!authToken) {
-      setAccessState('signed-out')
-      setMetrics(null)
-      return
-    }
+    if (!authToken) return
 
     let active = true
-    setAccessState('loading')
     ownerAi.getDashboard(authToken).then((data) => {
       if (!active) return
-      setMetrics(data)
-      setAccessState('ready')
+      setAccessResult({ token: authToken, status: 'ready', metrics: data })
     }).catch((error: unknown) => {
       if (!active) return
-      setAccessState(error instanceof Error && /forbidden/i.test(error.message) ? 'forbidden' : 'unavailable')
+      setAccessResult({
+        token: authToken,
+        status: error instanceof Error && /forbidden/i.test(error.message) ? 'forbidden' : 'unavailable',
+        metrics: null,
+      })
     })
 
     return () => {
