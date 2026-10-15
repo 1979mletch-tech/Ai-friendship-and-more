@@ -2,7 +2,7 @@
 // Route: /owner (or https://thebuildrush.com/owner)
 // Enforces server-side owner role verification, deny-by-default, and audit logging.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { OwnerAiService } from '../services/ownerAiService'
 import { CoreBrainService } from '../services/coreBrainService'
 import type {

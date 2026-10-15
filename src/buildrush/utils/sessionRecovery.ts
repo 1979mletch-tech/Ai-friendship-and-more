@@ -60,6 +60,7 @@ export class AssistantSessionRecovery {
   public sanitizeInput(raw: string, maxChars = 1800): string {
     if (typeof raw !== 'string') return ''
     return raw
+      // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001F\u007F]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
