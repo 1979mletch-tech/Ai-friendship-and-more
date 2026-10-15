@@ -16,4 +16,5 @@ export const accountDeletionKeys = (session: AuthSession) => [
   ...accountDataKeys(session),
   localAccountKey('ai_friendship_consent', session),
   localAccountKey('ai_friendship_companion_name', session),
+  localAccountKey('ai_aurora_adult_access', session),
 ]

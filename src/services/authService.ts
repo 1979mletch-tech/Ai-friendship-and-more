@@ -48,11 +48,19 @@ export const signIn = async (email: string, password: string) => {
   if (!password) throw new Error('Enter your password.')
   return normalizeSession(await request('token?grant_type=password', { email: checkedEmail(email), password }))
 }
-export const requestPasswordReset = async (email: string) => { await request('recover', { email: checkedEmail(email) }) }
+export const requestPasswordReset = async (email: string) => {
+  const redirectTo = typeof window !== 'undefined'
+    ? window.location.origin + import.meta.env.BASE_URL + '?return=password-recovery'
+    : ''
+  await request('recover', { email: checkedEmail(email), redirect_to: redirectTo })
+}
 
 export const saveSession = (session: AuthSession | null) => {
   if (!session) localStorage.removeItem(SESSION_KEY)
   else localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<AuthSession | null>('aurora-auth-session', { detail: session }))
+  }
 }
 
 export const loadSession = (): AuthSession | null => {
@@ -78,7 +86,6 @@ export const signOut = async (session: AuthSession | null) => {
   saveSession(null)
 }
 
-
 export const deleteAccount = async (session: AuthSession) => {
   const config = readCloudConfig()
   if (!hasCloudAuth(config)) throw new Error('Cloud authentication is not configured.')
@@ -91,7 +98,6 @@ export const deleteAccount = async (session: AuthSession) => {
   if (!response.ok) throw new Error(payload?.error || 'Account deletion failed.')
   saveSession(null)
 }
-
 
 export const refreshSession = async (session: AuthSession): Promise<AuthSession> => {
   if (!session.refreshToken) throw new Error('Your session has expired. Please sign in again.')

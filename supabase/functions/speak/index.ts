@@ -37,22 +37,38 @@ Deno.serve(async (req) => {
   if (quotaError) return json('Speech request limit unavailable', 503)
   if (!reserved) return json('Too many requests. Please wait a moment.', 429)
 
+  const allowedVoices = ['shimmer', 'nova', 'alloy', 'echo', 'fable', 'onyx']
+  const requestedVoice = typeof (body as { voice?: unknown } | null)?.voice === 'string'
+    ? (body as { voice: string }).voice.toLowerCase().trim()
+    : ''
+  const envVoice = (Deno.env.get('OPENAI_TTS_VOICE') || '').toLowerCase().trim()
+  const voice = allowedVoices.includes(requestedVoice)
+    ? requestedVoice
+    : (allowedVoices.includes(envVoice) ? envVoice : 'shimmer')
+  const model = Deno.env.get('OPENAI_TTS_MODEL') || 'tts-1'
+
+  const clientRequestId = crypto.randomUUID()
   let response: Response
   try {
     response = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Client-Request-Id': clientRequestId },
       body: JSON.stringify({
-        model: 'gpt-4o-mini-tts',
-        voice: 'marin',
+        model,
+        voice,
         input: text.trim(),
-        instructions: 'Speak English in a warm, distinctly feminine, natural conversational voice with a light Latin American Spanish accent. Keep the accent subtle and consistent; do not switch languages. Use a calm pace, fluid intonation, and gentle warmth. Avoid a theatrical, breathy, or robotic delivery.',
         response_format: 'mp3',
+        speed: 0.92,
       }),
       signal: AbortSignal.timeout(25_000),
     })
-  } catch { return json('Speech provider unavailable', 502) }
-  if (!response.ok) return json('Speech provider unavailable', 502)
+  } catch { console.error('speech_request_failed', { requestId: clientRequestId }); return json('Speech provider unavailable', 502) }
+  const requestId = response.headers.get('x-request-id') || clientRequestId
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '')
+    console.error('speech_response_error', { status: response.status, requestId, error: errorBody })
+    return json(response.status === 429 ? 'Aurora voice is busy. Please try again shortly.' : 'Speech provider unavailable', response.status === 429 ? 429 : 502)
+  }
   const bytes = await response.arrayBuffer()
   if (!bytes.byteLength || bytes.byteLength > 4_000_000) return json('Invalid speech response', 502)
   return new Response(bytes, { headers: { ...cors, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } })

@@ -1,0 +1,37 @@
+name: AI Friendship safe preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview-build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://smsewzcyrqxiamqepffz.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_MibufSSIfmDOqhZfIMNs8Q_Opvbmm3i
+      VITE_CHAT_API_URL: https://smsewzcyrqxiamqepffz.supabase.co/functions/v1/chat
+      VITE_PUBLIC_LIVE_MODE: 'false'
+      VITE_AGE_VERIFICATION_ENABLED: 'true'
+      VITE_AURORA_SPEECH_ENABLED: 'true'
+      VITE_BILLING_PROVIDER: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Preserve safe preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-friendship-safe-preview-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7

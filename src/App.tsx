@@ -3,7 +3,7 @@ import './App.css'
 import { getSubscriptionState } from './services/subscriptionService'
 import type { PlanId } from './types/subscription'
 import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlements'
-import { disclosureText, getAssistantResponse, isCrisisContactFollowUp, isCrisisText as isCrisisTextForClient } from './utils/safety'
+import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { hasCloudAuth } from './config/cloud'
 import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
@@ -17,12 +17,14 @@ import { previewActivePlan } from './utils/planGuard'
 import { ChatRequestGate } from './utils/chatRequestGate'
 import { removeHistoryTurn } from './utils/history'
 import { sanitizeImportedMessages } from './utils/conversationImport'
-import { canSendAtLimit } from './utils/usage'
+import { canSendAtLimit, countUserMessagesTotal, remainingMessages } from './utils/usage'
 import { finishAgeVerification, hasPendingAgeVerification, startAgeVerification } from './services/ageVerificationService'
-import { getBillingPlan, openBilling } from './services/billingService'
+import { getBillingStatus, openBilling, type BillingStatus } from './services/billingService'
 import { AuroraPresence } from './components/AuroraPresence'
+import { OwnerHq } from './buildrush/components/OwnerHq'
+import { JobMarketplace } from './buildrush/components/JobMarketplace'
 
-type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive'
+type Route = '/' | '/chat' | '/history' | '/memory' | '/settings' | '/account' | '/pricing' | '/privacy' | '/immersive' | '/owner' | '/buildrush'
 type ChatMode = 'general' | 'creative'
 
 type ChatMessage = {
@@ -50,15 +52,22 @@ const STORAGE_KEYS = {
   adultAccess: 'ai_aurora_adult_access',
 }
 
-const readCompanionName = (session: AuthSession | null): string => {
-  const saved = safeLocalStorageGet<string>(localAccountKey(STORAGE_KEYS.companionName, session), 'Aurora')
-  return typeof saved === 'string' && saved.trim() && saved !== 'Friend' ? saved : 'Aurora'
-}
-
 const parseRoute = (): Route => {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'thebuildrush.com' ||
+      window.location.hostname.endsWith('.thebuildrush.com'))
+  ) {
+    const rawPath = (window.location.pathname || '') + (window.location.hash || '')
+    if (rawPath.includes('owner')) return '/owner'
+    return '/buildrush'
+  }
   const hash = window.location.hash.replace('#', '') || '/'
-  if (hash === '/chat' || hash === '/history' || hash === '/memory' || hash === '/settings' || hash === '/account' || hash === '/pricing' || hash === '/privacy' || hash === '/immersive') {
-    return hash
+  const normalized = hash.startsWith('/') ? hash : '/' + hash
+  if (normalized === '/owner') return '/owner'
+  if (normalized === '/buildrush') return '/buildrush'
+  if (normalized === '/chat' || normalized === '/history' || normalized === '/memory' || normalized === '/settings' || normalized === '/account' || normalized === '/pricing' || normalized === '/privacy' || normalized === '/immersive') {
+    return normalized as Route
   }
   return '/'
 }
@@ -82,7 +91,7 @@ const App = () => {
   const [cloudMemories, setCloudMemories] = useState<CloudMemoryRow[] | null>(null)
   const [authBusy, setAuthBusy] = useState(false)
   const authBusyRef = useRef(false)
-  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(STORAGE_KEYS.adultAccess, false))
+  const [adultAccess, setAdultAccess] = useState<boolean>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.adultAccess, session), false))
   const [isSending, setIsSending] = useState(false)
   const chatGate = useRef(new ChatRequestGate())
   const [chatStatus, setChatStatus] = useState('')
@@ -90,13 +99,14 @@ const App = () => {
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, session), false),
   )
   const [trustedPlan, setTrustedPlan] = useState<PlanId>('free')
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
   const planId: PlanId = session ? trustedPlan : previewActivePlan(safeLocalStorageGet(STORAGE_KEYS.plan, 'free'))
   const [chatMode, setChatMode] = useState<ChatMode>('general')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, session), []),
   )
-  const [companionName, setCompanionName] = useState<string>(() => readCompanionName(session))
+  const [companionName, setCompanionName] = useState<string>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, session), 'Aurora'))
   const [memoryItems, setMemoryItems] = useState<string[]>(() => safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, session), []))
   const [memoryDraft, setMemoryDraft] = useState('')
   const [historyQuery, setHistoryQuery] = useState('')
@@ -124,6 +134,10 @@ const App = () => {
       (message.dayKey ||
         (message.createdAt ? getLocalDayKey(new Date(message.createdAt)) : '')) === today,
   ).length
+  const totalUserMessages = countUserMessagesTotal(messages)
+  const usedMessages = planId === 'free' ? totalUserMessages : todayUserMessages
+  const messageLimit = entitlements.usageLimits.dailyMessages
+  const messageRemaining = remainingMessages(usedMessages, messageLimit)
 
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
@@ -156,14 +170,22 @@ const App = () => {
   }, [])
 
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.consent, session), hasConsent), [hasConsent, session])
-  useEffect(() => safeLocalStorageSet(STORAGE_KEYS.adultAccess, adultAccess), [adultAccess])
+  useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.adultAccess, session), adultAccess), [adultAccess, session])
   useEffect(() => safeLocalStorageSet(STORAGE_KEYS.plan, 'free'), [])
   useEffect(() => {
     let active = true
+    let retryTimer = 0
     if (session && billing.isConfigured) {
-      void getBillingPlan(session).then((plan) => { if (active) setTrustedPlan(plan) }).catch(() => undefined)
+      const refreshBilling = () => void getBillingStatus(session)
+        .then((status) => { if (active) { setBillingStatus(status); setTrustedPlan(status.plan) } })
+        .catch(() => undefined)
+      refreshBilling()
+      const returnedFromCheckout = new URLSearchParams(window.location.search).get('return') === 'billing-success'
+      if (returnedFromCheckout) {
+        retryTimer = window.setTimeout(refreshBilling, 1800)
+      }
     }
-    return () => { active = false }
+    return () => { active = false; if (retryTimer) window.clearTimeout(retryTimer) }
   }, [session, billing.isConfigured])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.messages, session), messages), [messages, session])
   useEffect(() => safeLocalStorageSet(localAccountKey(STORAGE_KEYS.notes, session), projectNotes), [projectNotes, session])
@@ -174,24 +196,18 @@ const App = () => {
     if (!adultAccess || !input.trim() || !hasConsent || isSending) return
     if (publicLiveMode && !session) { setChatStatus('Sign in and complete adult verification to use live chat.'); return }
     const userText = input.trim().slice(0, 2000)
-    if (!canSendAtLimit(userText, todayUserMessages, entitlements.usageLimits.dailyMessages, messages)) return
+    if (!canSendAtLimit(userText, usedMessages, messageLimit)) return
     const generation = chatGate.current.begin()
     if (generation === null) return
 
-    let response = getAssistantResponse(userText, chatMode, messages)
-    const safetyResponse = isCrisisTextForClient(userText) || isCrisisContactFollowUp(userText, messages)
-    if (!session && response === null) {
-      chatGate.current.finish(generation)
-      setChatStatus('This browser preview has only scripted examples and cannot answer that message. Live chat needs server setup and adult verification.')
-      return
-    }
+    let response = getAssistantResponse(userText, chatMode)
     const localDayKey = getLocalDayKey(new Date())
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(), role: 'user', text: userText,
       createdAt: new Date().toISOString(), dayKey: localDayKey,
     }
 
-    if (session && !safetyResponse) {
+    if (session && !isCrisisTextForClient(userText)) {
       setIsSending(true)
       setChatStatus('AI is responding…')
       try {
@@ -200,6 +216,8 @@ const App = () => {
           [...messages, userMessage].map((m) => ({ role: m.role, text: m.text })),
           chatMode,
           companionName,
+          memoryItems,
+          visibleProjectNotes,
         )
         response = cloud.reply
         setChatStatus('')
@@ -216,8 +234,6 @@ const App = () => {
     if (!chatGate.current.isCurrent(generation)) return
     chatGate.current.finish(generation)
 
-    if (response === null) return
-    setChatStatus('')
     setMessages((current) => [
       ...current,
       userMessage,
@@ -261,8 +277,10 @@ const App = () => {
     setCloudConversations(null)
     setCloudMemories(null)
     setTrustedPlan('free')
+    setBillingStatus(null)
+    setAdultAccess(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.adultAccess, next), false))
     setHasConsent(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.consent, next), false))
-    setCompanionName(readCompanionName(next))
+    setCompanionName(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.companionName, next), 'Aurora'))
     setMessages(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.messages, next), []))
     setProjectNotes(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.notes, next), []))
     setMemoryItems(safeLocalStorageGet(localAccountKey(STORAGE_KEYS.memory, next), []))
@@ -351,11 +369,11 @@ const App = () => {
 
   const renderChat = () => (
     <section className="panel">
-      <AuroraPresence session={session} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
-      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility. If it is not yet configured, your message will remain here and the error will be shown.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
+      <AuroraPresence session={session} aiBusy={isSending} latestReply={[...messages].reverse().find((message) => message.role === 'assistant')?.text} onTranscript={(text) => setInput((current) => current.trim() ? `${current.trim()} ${text}` : text)} />
+      <p className="age-notice">{session ? 'Signed-in chat requires server verified adult eligibility.' : publicLiveMode ? 'Sign in and complete adult verification to use live AI.' : 'Browser preview: replies are fixed examples, not live AI. Sign in only when the live service has been configured and verified.'}</p>
       {publicLiveMode && !session && <a className="secondary-cta" href="#/account">Go to account</a>}
       <p className="small">{disclosureText}</p>
-      {!hasConsent && <p className="small" role="status">To send a preview message, tick the disclosure box below first.</p>}
+      {!hasConsent && <p className="small" role="status">To send a message, tick the disclosure box below first.</p>}
       <label className="consent">
         <input type="checkbox" checked={hasConsent} onChange={(e) => setHasConsent(e.target.checked)} />
         I understand these limits and want to continue.
@@ -381,9 +399,6 @@ const App = () => {
         </div>
       )}
 
-      {!session && !publicLiveMode && (
-        <p className="age-notice" role="note"><strong>Scripted preview.</strong> This is not a live conversation. Aurora can show a few examples and safety contacts; freeform AI chat needs an adult-verified account and server setup. Saved messages may include examples from an older preview.</p>
-      )}
       <div className="chat-box" role="log" aria-live="polite" aria-relevant="additions text">
         {messages.length === 0 ? (
           <p className="small">No messages yet. Start with a topic starter or your own question.</p>
@@ -410,23 +425,27 @@ const App = () => {
         <button
           type="button"
           onClick={sendMessage}
-          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, todayUserMessages, entitlements.usageLimits.dailyMessages, messages)}
+          disabled={!hasConsent || isSending || (publicLiveMode && !session) || !input.trim() || !canSendAtLimit(input, usedMessages, messageLimit)}
         >
           Send
         </button>
       </div>
       {chatStatus && <p className="small" role="status" aria-live="polite">{chatStatus}</p>}
-      <p className="small">
-        Daily message usage: {todayUserMessages}. Plan limit per day:{' '}
-        {entitlements.usageLimits.dailyMessages}.
-      </p>
-      {todayUserMessages >= entitlements.usageLimits.dailyMessages && (
-        <p className="warn">You reached today’s message limit. Urgent safety guidance remains available; paid plans are not active yet.</p>
+      <div className="usage-card" aria-live="polite">
+        <strong>{planId === 'free' ? 'Free trial' : 'Paid plan'}</strong>
+        <span>{planId === 'free' ? `${usedMessages} of 10 free messages used · ${messageRemaining} remaining` : `${usedMessages} of ${messageLimit} messages used today · ${messageRemaining} remaining today`}</span>
+      </div>
+      <p className="small">Approved context available to Aurora: {memoryItems.length} memory item{memoryItems.length === 1 ? '' : 's'} and {visibleProjectNotes.length} project note{visibleProjectNotes.length === 1 ? '' : 's'}. <a href="#/memory">Review memory</a></p>
+      {usedMessages >= messageLimit && planId === 'free' && (
+        <p className="warn">Your 10 free AI messages are used. <a href="#/pricing">Choose a plan to continue chatting.</a> Urgent safety guidance remains available.</p>
+      )}
+      {usedMessages >= messageLimit && planId !== 'free' && (
+        <p className="warn">You reached today’s paid message limit. Urgent safety guidance remains available; normal chat resets with the next daily allowance.</p>
       )}
 
-      <h3>Creative project memory (local fallback)</h3>
+      <h3>Creative project context</h3>
       <p className="small">
-        Keep only non-sensitive preferences, approved project notes, and creative context. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
+        Keep only non-sensitive preferences, approved project notes, and creative context. Approved items are included in live Aurora replies. Limit: {entitlements.usageLimits.projectNotesLimit} notes for your current plan.
       </p>
       <div className="grid">
         <label>
@@ -466,7 +485,6 @@ const App = () => {
     </section>
   )
 
-
   const renderHistory = () => (
     <section className="panel">
       <h2>Conversation History</h2>
@@ -494,7 +512,7 @@ const App = () => {
   const renderMemory = () => (
     <section className="panel">
       <h2>Memory</h2>
-      <p>Choose what {companionName} may remember. Memory is user-controlled and local-only in this preview.</p>
+      <p>Choose what {companionName} may remember. Approved local memory is included as bounded context in live Aurora replies when you are signed in; cloud backup remains a separate manual control.</p>
       <div className="input-row">
         <input aria-label="Memory item" value={memoryDraft} onChange={(e) => setMemoryDraft(e.target.value)} placeholder="Example: I am writing a novel" maxLength={240} />
         <button type="button" onClick={() => {
@@ -533,7 +551,6 @@ const App = () => {
       <p className="warn">{hasCloudAuth() ? 'Local data is kept separately for each signed-in account on this browser. Cloud backup is manual and still requires staging verification.' : 'Cloud accounts are not configured in this preview. Local browser storage is not a private account vault.'}</p>
     </section>
   )
-
 
   const renderAccount = () => (
     <section className="panel">
@@ -668,12 +685,10 @@ const App = () => {
   const renderPricing = () => (
     <section className="panel">
       <h2>Pricing & Subscription</h2>
-      <p>
-        Pricing below is production-minded and configurable. If billing credentials are missing, this screen stays
-        in safe preview mode.
-      </p>
+      <p>Start with 10 free AI messages, then choose the access period that suits you. Stripe shows the exact amount and renewal terms before payment.</p>
       <p className={billing.isConfigured ? 'good' : 'warn'}>{billing.setupMessage}</p>
-      {billing.isConfigured && <p className="small">Review the exact currency, amount and renewal terms on Stripe Checkout before paying. Paid access starts only after Stripe confirms the subscription.</p>}
+      {billing.isConfigured && <p className="small">Paid access starts only after Stripe confirms the subscription.</p>}
+      {session && billingStatus && <div className="usage-card" aria-live="polite"><strong>Subscription status</strong><span>{billingStatus.paid ? `Active: ${billingStatus.plan}` : 'Free plan'}{billingStatus.cancelAtPeriodEnd ? ` · Cancels at period end${billingStatus.currentPeriodEnd ? ` (${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()})` : ''}` : ''}</span></div>}
       <div className="plans">
         {plans.map((plan) => (
           <article key={plan.id} className="plan">
@@ -718,6 +733,7 @@ const App = () => {
         <li>Encryption in transit uses HTTPS/TLS when deployed.</li>
         <li>Secrets must stay in environment variables, never hard-coded.</li>
         <li>You can clear chat history and creative notes locally at any time.</li>
+        <li>Approved memory is bounded before it is sent as context to live Aurora.</li>
         <li>Data collection should stay minimal and purpose-limited.</li>
         <li>AI/database providers may process data per their terms and configuration.</li>
       </ul>
@@ -785,6 +801,14 @@ const App = () => {
       <p className="small">This confirmation opens the browser preview on this device. It does not verify age for a live account or unlock live AI. After confirming, accept the chat disclosure to send a preview message.</p>
     </section>
   )
+
+  if (route === '/owner') {
+    return <OwnerHq authToken={session?.accessToken} />
+  }
+
+  if (route === '/buildrush') {
+    return <JobMarketplace />
+  }
 
   let page = renderHome()
   if (routeRequiresAdultGate(route) && !adultAccess) {
