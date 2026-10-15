@@ -1,0 +1,153 @@
+// Client Service for BuildRush Private Owner/Admin AI (AI Assistant 2)
+// Strictly enforces owner role check, audit trail logging, and sensitive action confirmation.
+
+import { AssistantSessionRecovery } from '../utils/sessionRecovery'
+import type {
+  AiMessage,
+  OwnerOperationalMetrics,
+  SensitiveActionProposal,
+} from '../types'
+
+export interface OwnerAiResponse {
+  reply: string
+  isAi: true
+  modelLive: boolean
+  proposal?: SensitiveActionProposal | null
+  error?: string
+}
+
+export class OwnerAiService {
+  private recovery: AssistantSessionRecovery
+  private messages: AiMessage[] = []
+  private endpointUrl: string
+
+  constructor(endpointUrl = '/functions/v1/buildrush-owner-ai') {
+    this.endpointUrl = endpointUrl
+    this.recovery = new AssistantSessionRecovery({
+      storageKey: 'buildrush_owner_ai_history',
+      maxMessages: 30,
+      requestTimeoutMs: 20000,
+      maxRetries: 2,
+    })
+    this.messages = this.recovery.loadMessages()
+  }
+
+  public getMessages(): AiMessage[] {
+    return [...this.messages]
+  }
+
+  public clearHistory(): void {
+    this.messages = []
+    this.recovery.clearSession()
+  }
+
+  public async sendOwnerMessage(
+    text: string,
+    authToken: string,
+    metrics?: Partial<OwnerOperationalMetrics>,
+  ): Promise<OwnerAiResponse> {
+    const clean = this.recovery.sanitizeInput(text, 2000)
+    if (!clean) {
+      throw new Error('Message cannot be empty.')
+    }
+    if (!authToken) {
+      throw new Error('Authentication required: Owner session missing.')
+    }
+
+    const userMessage: AiMessage = {
+      id: 'owner-msg-' + Date.now(),
+      role: 'user',
+      text: clean,
+      createdAt: new Date().toISOString(),
+    }
+
+    this.messages.push(userMessage)
+    this.recovery.saveMessages(this.messages)
+
+    try {
+      const response = await this.recovery.executeWithRetry<OwnerAiResponse>(async (signal) => {
+        const res = await fetch(this.endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + authToken,
+          },
+          body: JSON.stringify({
+            messages: this.messages.slice(-20).map((m) => ({ role: m.role, text: m.text })),
+            metrics,
+          }),
+          signal,
+        })
+
+        if (res.status === 403) {
+          throw new Error('Forbidden: You do not have owner authorization to access this assistant.')
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Server returned status ' + res.status)
+        }
+
+        return (await res.json()) as OwnerAiResponse
+      })
+
+      const assistantMessage: AiMessage = {
+        id: 'owner-reply-' + Date.now(),
+        role: 'assistant',
+        text: response.reply,
+        metadata: {
+          isAi: true,
+          modelLive: response.modelLive,
+          proposal: response.proposal,
+        },
+        createdAt: new Date().toISOString(),
+      }
+
+      this.messages.push(assistantMessage)
+      this.recovery.saveMessages(this.messages)
+
+      return response
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error communicating with Owner AI'
+      return {
+        reply: 'Owner AI Service Alert: ' + msg,
+        isAi: true,
+        modelLive: false,
+        error: msg,
+      }
+    }
+  }
+
+  // Explicit confirmation workflow for sensitive actions (never executed silently)
+  public async confirmAndExecuteAction(
+    proposal: SensitiveActionProposal,
+    authToken: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (!proposal.requiresOwnerConfirmation) {
+      throw new Error('Action does not require confirmation.')
+    }
+
+    const res = await fetch(this.endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + authToken,
+      },
+      body: JSON.stringify({
+        action: 'confirm_sensitive_action',
+        proposal,
+      }),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Failed to execute confirmed action.')
+    }
+
+    const data = await res.json()
+    return {
+      success: true,
+      message: data.message || 'Action confirmed and logged.',
+    }
+  }
+}
