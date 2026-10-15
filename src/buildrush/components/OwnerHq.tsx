@@ -212,7 +212,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
             <div className="br-hq-panel-header">
               <h2 className="br-hq-panel-title">
                 <img
-                  src="/avatars/buildrush-owner-ai.svg"
+                  src="/buildrush/owner-ai-avatar.svg"
                   alt="BuildRush HQ Advisor"
                   className="br-ai-avatar"
                   onError={(e) => {
