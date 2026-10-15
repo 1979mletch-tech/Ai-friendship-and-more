@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AuroraFigure } from './AuroraFigure'
-import { generateAuroraSpeech, speechAvailable } from '../services/speechService'
+import { browserSpeechAvailable, generateAuroraSpeech, speakWithBrowserSynthesis, speechAvailable, type BrowserSpeechHandle } from '../services/speechService'
+import { getVoiceStyle, isDistressCue } from '../features/companion/voiceStyle'
 import { getOwnerAuroraStatus, sendOwnerAuroraChat, type OwnerReadiness } from '../services/ownerAuroraService'
 import { loadSession, type AuthSession } from '../services/authService'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage'
@@ -39,6 +39,7 @@ export function OwnerAurora() {
   const [noteDraft, setNoteDraft] = useState('')
   const [projects, setProjects] = useState<OwnerProject[]>(defaultOwnerProjects)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const deviceVoiceRef = useRef<BrowserSpeechHandle | null>(null)
   const audioUrlRef = useRef<string | null>(null)
   const sessionUserIdRef = useRef(session?.user.id ?? null)
   const requestIdRef = useRef(0)
@@ -149,6 +150,8 @@ export function OwnerAurora() {
     voiceRequestIdRef.current += 1
     audioRef.current?.pause()
     audioRef.current = null
+    deviceVoiceRef.current?.stop()
+    deviceVoiceRef.current = null
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
     audioUrlRef.current = null
   }
@@ -156,11 +159,23 @@ export function OwnerAurora() {
   useEffect(() => () => stopOwnerVoice(), [session?.user.id])
 
   const speakLatest = async () => {
-    if (!session || !latestReply || !speechAvailable()) return
+    if (!session || !latestReply || (!speechAvailable() && !browserSpeechAvailable())) return
     stopOwnerVoice()
     const requestId = voiceRequestIdRef.current
     const userId = session.user.id
     setStatus('Preparing Aurora’s voice…')
+    if (!speechAvailable() && browserSpeechAvailable()) {
+      const style = getVoiceStyle(false, isDistressCue(latestReply))
+      try {
+        deviceVoiceRef.current = speakWithBrowserSynthesis(latestReply, {
+          rate: style.rate, pitch: style.pitch,
+          onEnd: () => { if (requestId === voiceRequestIdRef.current) setStatus('') },
+          onError: (error) => { if (requestId === voiceRequestIdRef.current) setStatus(error.message) },
+        })
+        setStatus('')
+      } catch (error) { setStatus(error instanceof Error ? error.message : 'Device voice unavailable.') }
+      return
+    }
     try {
       const blob = await generateAuroraSpeech(session, latestReply)
       if (requestId !== voiceRequestIdRef.current || sessionUserIdRef.current !== userId) return
@@ -207,7 +222,7 @@ export function OwnerAurora() {
       ) : (
         <div className="owner-aurora-panel">
           <header className="owner-aurora-header">
-            <div className="owner-aurora-mini" aria-hidden="true"><AuroraFigure /></div>
+            <div className="owner-aurora-mini"><img src={`${import.meta.env.BASE_URL}aurora-portrait.webp`} alt="" /></div>
             <div><strong>Owner Aurora</strong><small>Private owner workspace · AI</small></div>
             <button type="button" aria-label="Close Owner Aurora" onClick={() => setOpen(false)}>×</button>
           </header>
@@ -258,7 +273,7 @@ export function OwnerAurora() {
           <div className="owner-aurora-input">
             <textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={1800} placeholder="What do you want help organising?" />
             <button type="button" disabled={busy || !input.trim()} onClick={() => void send()}>{busy ? 'Thinking…' : 'Ask Aurora'}</button>
-            <button type="button" disabled={!latestReply || !speechAvailable()} onClick={() => void speakLatest()}>Hear reply</button>
+            <button type="button" disabled={!latestReply || (!speechAvailable() && !browserSpeechAvailable())} onClick={() => void speakLatest()}>Hear reply</button>
           </div>
 
           <details className="owner-aurora-notes">

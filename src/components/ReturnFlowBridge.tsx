@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { getBillingPlan } from '../services/billingService'
-import { loadSession, refreshSession, saveSession } from '../services/authService'
+import { completePasswordRecovery, loadSession, refreshSession, saveSession } from '../services/authService'
 import { finishAgeVerification, hasPendingAgeVerification } from '../services/ageVerificationService'
 import { clearReturnFlowFromUrl, parseReturnFlow } from '../utils/returnFlow'
 
-type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error'
+type FlowState = 'idle' | 'working' | 'success' | 'pending' | 'cancelled' | 'error' | 'password'
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
@@ -12,8 +12,21 @@ export function ReturnFlowBridge() {
   const [state, setState] = useState<FlowState>('idle')
   const [message, setMessage] = useState('')
   const [retry, setRetry] = useState(0)
+  const [recoveryToken, setRecoveryToken] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const recoveryAccessToken = hashParams.get('access_token') || params.get('access_token') || ''
+    const recoveryType = hashParams.get('type') || params.get('type') || ''
+    if (recoveryAccessToken && recoveryType === 'recovery') {
+      setRecoveryToken(recoveryAccessToken)
+      setState('password')
+      setMessage('Choose a new password for your Aurora account.')
+      return
+    }
     const flow = parseReturnFlow(window.location.search)
     if (!flow) return
     let active = true
@@ -118,12 +131,36 @@ export function ReturnFlowBridge() {
     return () => { active = false }
   }, [retry])
 
+  const finishPasswordReset = async () => {
+    if (!recoveryToken) return
+    if (newPassword !== confirmPassword) { setMessage('The passwords do not match.'); return }
+    try {
+      await completePasswordRecovery(recoveryToken, newPassword)
+      window.history.replaceState({}, '', window.location.pathname + '#/account')
+      setRecoveryToken('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setState('success')
+      setMessage('Password updated. You can now sign in with your new password.')
+    } catch (error) {
+      setState('password')
+      setMessage(error instanceof Error ? error.message : 'Unable to update password.')
+    }
+  }
+
   if (state === 'idle') return null
 
   return (
     <aside className={`return-flow return-flow-${state}`} role="status" aria-live="polite">
       <strong>{state === 'working' ? 'Checking your account…' : state === 'success' ? 'Account updated' : state === 'cancelled' ? 'Checkout cancelled' : state === 'pending' ? 'Still confirming' : 'Account check needed'}</strong>
       {message && <span>{message}</span>}
+      {state === 'password' && (
+        <div className="return-flow-password">
+          <input type="password" autoComplete="new-password" placeholder="New password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          <input type="password" autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          <button type="button" onClick={() => void finishPasswordReset()}>Set new password</button>
+        </div>
+      )}
       {(state === 'pending' || state === 'error') && (
         <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry status</button>
       )}
