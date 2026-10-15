@@ -156,14 +156,18 @@ export interface OwnerAuditLog {
 
 // Sensitive action proposal prepared by Owner AI (requiring explicit owner confirmation)
 export interface SensitiveActionProposal {
+  id?: string
   proposalId: string
   actionType: 'refund' | 'suspend_account' | 'delete_record' | 'mass_message' | 'policy_update'
-  targetType: string
-  targetId: string
+  targetType?: string
+  targetId?: string
   description: string
-  consequences: string
-  payload: Record<string, unknown>
+  consequences?: string
+  payload?: Record<string, unknown>
+  parameters?: Record<string, unknown>
   requiresOwnerConfirmation: true
+  status?: string
+  createdAt?: string
 }
 
 // Live Operational Dashboard Metrics for Private Owner HQ

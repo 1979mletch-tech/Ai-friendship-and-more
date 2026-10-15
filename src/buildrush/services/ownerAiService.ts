@@ -122,7 +122,7 @@ export class OwnerAiService {
   public async confirmAndExecuteAction(
     proposal: SensitiveActionProposal,
     authToken: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; auditLogId?: string }> {
     if (!proposal.requiresOwnerConfirmation) {
       throw new Error('Action does not require confirmation.')
     }
@@ -148,6 +148,43 @@ export class OwnerAiService {
     return {
       success: true,
       message: data.message || 'Action confirmed and logged.',
+      auditLogId: data.auditLogId,
     }
   }
+
+  // Alias for sendMessage (throws on error for programmatic verification)
+  public async sendMessage(
+    text: string,
+    authToken?: string,
+    metrics?: Partial<OwnerOperationalMetrics>,
+  ): Promise<OwnerAiResponse> {
+    if (!authToken) {
+      throw new Error('Owner authorization token required.')
+    }
+    const response = await this.sendOwnerMessage(text, authToken, metrics)
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response
+  }
 }
+
+export const ownerAiService = new OwnerAiService()
+
+export function detectSensitiveAction(text: string): { isSensitive: boolean; actionType?: string } {
+  const SENSITIVE_PATTERNS = [
+    { type: 'refund', pattern: /refund|money movement|reimburse/i },
+    { type: 'suspend_account', pattern: /suspend|ban|block user|deactivate account/i },
+    { type: 'delete_record', pattern: /delete.*account|delete.*job|wipe.*data|purge/i },
+    { type: 'mass_message', pattern: /broadcast|mass message|notify all|blast/i },
+    { type: 'policy_update', pattern: /change policy|update rule|modify fee|change commission/i },
+  ]
+
+  for (const item of SENSITIVE_PATTERNS) {
+    if (item.pattern.test(text)) {
+      return { isSensitive: true, actionType: item.type }
+    }
+  }
+  return { isSensitive: false }
+}
+

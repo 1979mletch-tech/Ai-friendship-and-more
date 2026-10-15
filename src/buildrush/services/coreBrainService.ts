@@ -152,3 +152,20 @@ export class CoreBrainService {
     ].join('\n')
   }
 }
+
+export const coreBrainService = CoreBrainService.getInstance()
+
+export function isOwnerOnlyRule(categoryOrKey: string): boolean {
+  return categoryOrKey.includes('contingency') || categoryOrKey.includes('owner')
+}
+
+export function getOwnerOnlyRules(): Array<{ key: string; value: string }> {
+  return [
+    {
+      key: 'contingency_rule',
+      value:
+        'The optional £50 contingency for established tradespeople after 6 months of meaningful activity is a potential future discretionary owner-managed arrangement only. DO NOT build into public website, do NOT automate approvals, do NOT advertise entitlement, NEVER advertised or automated, and do NOT create a loan feature.',
+    },
+  ]
+}
+

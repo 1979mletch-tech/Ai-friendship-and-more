@@ -73,10 +73,6 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
     },
   ])
 
-  useEffect(() => {
-    setChatMessages(ownerAi.getMessages())
-  }, [ownerAi])
-
   if (!isAuthorizedOwner) {
     return (
       <main className="br-access-denied" role="alert">
@@ -126,9 +122,9 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
         id: 'log-' + Date.now(),
         ownerId: 'owner-session',
         action: activeProposal.actionType,
-        targetType: activeProposal.targetType,
-        targetId: activeProposal.targetId,
-        details: activeProposal.payload,
+        targetType: activeProposal.targetType || 'unknown',
+        targetId: activeProposal.targetId || 'unknown',
+        details: activeProposal.payload || {},
         confirmedByOwner: true,
         createdAt: new Date().toISOString(),
       }

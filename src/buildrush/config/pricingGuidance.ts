@@ -86,13 +86,34 @@ export const UK_TRADE_GUIDANCE: Record<string, TradeRateGuidance> = {
   },
   painting: {
     trade: 'Painting & Decorating',
-    typicalHourlyMin: 30,
-    typicalHourlyMax: 60,
+    typicalHourlyMin: 35,
+    typicalHourlyMax: 65,
     emergencyCalloutMin: 60,
     emergencyCalloutMax: 110,
     commonRepairs: [
       { job: 'Single room walls & ceiling painting', typicalMinGbp: 220, typicalMaxGbp: 480, unit: 'labour for standard room' },
       { job: 'Exterior window woodwork preparation & gloss', typicalMinGbp: 40, typicalMaxGbp: 80, unit: 'per window' },
+    ],
+  },
+  locksmith: {
+    trade: 'Locksmith',
+    typicalHourlyMin: 50,
+    typicalHourlyMax: 95,
+    emergencyCalloutMin: 95,
+    emergencyCalloutMax: 180,
+    commonRepairs: [
+      { job: 'Standard lock change / cylinder replacement', typicalMinGbp: 75, typicalMaxGbp: 130, unit: 'per lock' },
+      { job: 'Emergency lockout gain entry (non-destructive)', typicalMinGbp: 95, typicalMaxGbp: 160, unit: 'per callout' },
+    ],
+  },
+  general: {
+    trade: 'General Handyperson & Repair',
+    typicalHourlyMin: 35,
+    typicalHourlyMax: 65,
+    emergencyCalloutMin: 65,
+    emergencyCalloutMax: 120,
+    commonRepairs: [
+      { job: 'Minor handyman fixes & repairs', typicalMinGbp: 40, typicalMaxGbp: 80, unit: 'per repair' },
     ],
   },
 }

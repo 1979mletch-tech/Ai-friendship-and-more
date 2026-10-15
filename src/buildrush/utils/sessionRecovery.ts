@@ -22,9 +22,38 @@ export class AssistantSessionRecovery {
   private config: SessionRecoveryConfig
   private isProcessing = false
   private activeAbortController: AbortController | null = null
+  private memoryStore = new Map<string, string>()
 
   constructor(customConfig?: Partial<SessionRecoveryConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...customConfig }
+  }
+
+  private getItem(key: string): string | null {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key)
+      }
+      if (typeof localStorage !== 'undefined') {
+        const val = localStorage.getItem(key)
+        if (val !== null) return val
+      }
+    } catch {
+      // Fall through to memory fallback
+    }
+    return this.memoryStore.get(key) ?? null
+  }
+
+  private setItem(key: string, val: string): void {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, val)
+      } else if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, val)
+      }
+    } catch {
+      // Fall through to memory fallback
+    }
+    this.memoryStore.set(key, val)
   }
 
   // Sanitizes text input: removes control characters and truncates to safe limit
@@ -41,7 +70,7 @@ export class AssistantSessionRecovery {
   public loadMessages(userId?: string): AiMessage[] {
     const key = userId ? `${this.config.storageKey}:${userId}` : this.config.storageKey
     try {
-      const stored = localStorage.getItem(key)
+      const stored = this.getItem(key)
       if (!stored) return []
       const parsed = JSON.parse(stored)
       if (!Array.isArray(parsed)) return []
@@ -58,7 +87,7 @@ export class AssistantSessionRecovery {
     const key = userId ? `${this.config.storageKey}:${userId}` : this.config.storageKey
     try {
       const safeSubset = messages.slice(-this.config.maxMessages)
-      localStorage.setItem(key, JSON.stringify(safeSubset))
+      this.setItem(key, JSON.stringify(safeSubset))
     } catch {
       // Ignore quota errors gracefully
     }
