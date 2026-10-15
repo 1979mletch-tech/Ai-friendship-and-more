@@ -53,7 +53,11 @@ const STORAGE_KEYS = {
 }
 
 const parseRoute = (): Route => {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('thebuildrush.com')) {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'thebuildrush.com' ||
+      window.location.hostname.endsWith('.thebuildrush.com'))
+  ) {
     const rawPath = (window.location.pathname || '') + (window.location.hash || '')
     if (rawPath.includes('owner')) return '/owner'
     return '/buildrush'

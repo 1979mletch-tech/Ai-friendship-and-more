@@ -30,7 +30,12 @@ export const CustomerAiChat: FC<CustomerAiChatProps> = ({ isOpen, onClose, onPre
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'customer' | 'tradesperson'>('customer');
-  const [sessionId] = useState<string>(() => 'cust-sess-' + Math.random().toString(36).substring(2, 10));
+  const [sessionId] = useState<string>(() => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return 'cust-sess-' + crypto.randomUUID()
+    }
+    return 'cust-sess-' + Date.now().toString(36)
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
