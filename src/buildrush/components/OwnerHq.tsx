@@ -2,50 +2,40 @@
 // Route: /owner (or https://thebuildrush.com/owner)
 // Enforces server-side owner role verification, deny-by-default, and audit logging.
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { OwnerAiService } from '../services/ownerAiService'
+import type { OwnerDashboardMetrics } from '../services/ownerAiService'
 import { CoreBrainService } from '../services/coreBrainService'
 import type {
-  OwnerOperationalMetrics,
   SensitiveActionProposal,
   OwnerAuditLog,
   CoreKnowledgeItem,
-  MonthlyArchive,
 } from '../types'
 import './ownerHq.css'
 
 interface OwnerHqProps {
   authToken?: string
-  userRole?: string
-  mfaVerified?: boolean
 }
 
-const DEFAULT_METRICS: OwnerOperationalMetrics = {
-  jobsNeedingAttention: 3,
-  openJobsCount: 14,
-  completedJobsCount: 52,
-  totalCustomers: 88,
-  totalTradespeople: 39,
-  activeSubscriptionsCount: 31,
-  stripeMonthlyRevenueGbp: 1550,
-  unresolvedTicketsCount: 2,
-  aiEscalatedTicketsCount: 1,
-  customerAiStatus: 'operational',
-  ownerAiStatus: 'operational',
-  lastMonthlyArchive: '2026-09',
-}
+const formatMetric = (value: number | null | undefined) =>
+  value == null ? 'Not available' : value.toLocaleString('en-GB')
 
 export const OwnerHq: React.FC<OwnerHqProps> = ({
   authToken = '',
-  userRole = 'owner',
-  mfaVerified = true,
 }) => {
-  // 1. Strict Deny-By-Default Role Gate
-  const isAuthorizedOwner = userRole === 'owner' && Boolean(authToken)
-
-  const [metrics] = useState<OwnerOperationalMetrics>(DEFAULT_METRICS)
   const [ownerAi] = useState(() => new OwnerAiService())
   const [coreBrain] = useState(() => CoreBrainService.getInstance())
+  const [accessResult, setAccessResult] = useState<{
+    token: string
+    status: 'ready' | 'forbidden' | 'unavailable'
+    metrics: OwnerDashboardMetrics | null
+  } | null>(null)
+  const accessState = !authToken
+    ? 'signed-out'
+    : accessResult?.token !== authToken
+      ? 'loading'
+      : accessResult.status
+  const metrics = accessResult?.token === authToken ? accessResult.metrics : null
 
   const [chatMessages, setChatMessages] = useState(ownerAi.getMessages())
   const [chatInput, setChatInput] = useState('')
@@ -55,33 +45,44 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
 
   const [activeTab, setActiveTab] = useState<'chat' | 'brain' | 'archives' | 'audit'>('chat')
   const [auditLogs, setAuditLogs] = useState<OwnerAuditLog[]>([])
-  const [monthlyArchives] = useState<MonthlyArchive[]>([
-    {
-      id: 'arch-2026-09',
-      monthKey: '2026-09',
-      assistantType: 'owner',
-      summary: 'September 2026 rollover: 48 jobs completed, £1,420 subscription revenue. No unhandled chargebacks.',
-      openCases: [
-        { id: 'case-104', subject: 'Disputed emergency plumbing invoice #902', status: 'under_review', priority: 'urgent' },
-      ],
-      keyDecisions: [
-        { id: 'dec-01', decision: 'Maintained strict prohibition on public £50 contingency automation', date: '2026-09-18', rationale: 'Risk mitigation per operating rules' },
-        { id: 'dec-02', decision: 'Updated UK pricing guidance for winter heating service', date: '2026-09-25', rationale: 'Seasonal inflation adjustment' },
-      ],
-      archivedRoutineCount: 184,
-      createdAt: '2026-10-01T00:00:00Z',
-    },
-  ])
 
-  if (!isAuthorizedOwner) {
+  useEffect(() => {
+    if (!authToken) return
+
+    let active = true
+    ownerAi.getDashboard(authToken).then((data) => {
+      if (!active) return
+      setAccessResult({ token: authToken, status: 'ready', metrics: data })
+    }).catch((error: unknown) => {
+      if (!active) return
+      setAccessResult({
+        token: authToken,
+        status: error instanceof Error && /forbidden/i.test(error.message) ? 'forbidden' : 'unavailable',
+        metrics: null,
+      })
+    })
+
+    return () => {
+      active = false
+    }
+  }, [authToken, ownerAi])
+
+  if (accessState !== 'ready') {
     return (
       <main className="br-access-denied" role="alert">
         <h1 style={{ color: '#b91c1c', fontSize: '1.5rem', marginBottom: '12px' }}>
-          403 Forbidden — Private Owner HQ
+          {accessState === 'loading' ? 'Checking private owner access…' :
+            accessState === 'signed-out' ? 'Sign in to access BuildRush HQ' :
+              accessState === 'forbidden' ? '403 Forbidden — Private Owner HQ' : 'Owner HQ data unavailable'}
         </h1>
         <p style={{ color: '#475569', fontSize: '0.95rem', lineHeight: '1.6' }}>
-          This is the private business headquarters for the verified BuildRush owner.
-          Public users, tradespeople, and customers are not permitted access.
+          {accessState === 'signed-out'
+            ? <>This is private. <a href="#/account">Sign in</a> and return to the owner page.</>
+            : accessState === 'loading'
+              ? 'The server is verifying your owner permissions.'
+              : accessState === 'forbidden'
+                ? 'The server did not authorize this account for owner access.'
+                : 'The server could not verify owner access or load authorised business data. Try again later.'}
         </p>
       </main>
     )
@@ -96,7 +97,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
     setIsAiBusy(true)
 
     try {
-      const response = await ownerAi.sendOwnerMessage(messageText, authToken, metrics)
+      const response = await ownerAi.sendOwnerMessage(messageText, authToken)
       setChatMessages(ownerAi.getMessages())
       if (response.proposal) {
         setActiveProposal(response.proposal)
@@ -109,15 +110,15 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
     }
   }
 
-  const handleExecuteProposal = async () => {
+  const handleLogProposal = async () => {
     if (!activeProposal) return
-    setProposalStatus('Executing and recording in audit log...')
+    setProposalStatus('Recording the confirmed proposal. No business action will be executed.')
 
     try {
-      const result = await ownerAi.confirmAndExecuteAction(activeProposal, authToken)
+      const result = await ownerAi.confirmAndLogProposal(activeProposal, authToken)
       setProposalStatus(result.message)
 
-      // Add to local audit log view
+      // Add the confirmed proposal to the local audit log view.
       const newLog: OwnerAuditLog = {
         id: 'log-' + Date.now(),
         ownerId: 'owner-session',
@@ -144,7 +145,6 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
             BuildRush <span style={{ color: '#ff7139' }}>HQ</span>
           </span>
           <span className="br-hq-badge">Owner Control Centre</span>
-          {mfaVerified && <span className="br-hq-mfa">✓ Owner MFA Verified</span>}
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
@@ -180,27 +180,26 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
 
       {/* Operational Dashboard Metrics Grid */}
       <section className="br-hq-grid" aria-label="Operational Metrics">
-        <div className={`br-hq-stat-card ${metrics.jobsNeedingAttention > 0 ? 'alert' : ''}`}>
+        <div className="br-hq-stat-card">
           <div className="br-hq-stat-label">Jobs Needing Attention</div>
-          <div className="br-hq-stat-value highlight">{metrics.jobsNeedingAttention}</div>
+          <div className="br-hq-stat-value highlight">Not tracked</div>
         </div>
         <div className="br-hq-stat-card">
           <div className="br-hq-stat-label">Open / Completed Jobs</div>
-          <div className="br-hq-stat-value">{metrics.openJobsCount} / {metrics.completedJobsCount}</div>
+          <div className="br-hq-stat-value">{formatMetric(metrics?.openJobsCount)} / {formatMetric(metrics?.completedJobsCount)}</div>
         </div>
         <div className="br-hq-stat-card">
           <div className="br-hq-stat-label">Active Tradespeople</div>
-          <div className="br-hq-stat-value">{metrics.totalTradespeople}</div>
+          <div className="br-hq-stat-value">{formatMetric(metrics?.totalTradespeople)}</div>
         </div>
         <div className="br-hq-stat-card">
           <div className="br-hq-stat-label">Stripe Monthly Volume</div>
-          <div className="br-hq-stat-value">£{metrics.stripeMonthlyRevenueGbp}</div>
+          <div className="br-hq-stat-value">{metrics?.stripeMonthlyRevenueGbp == null ? 'Not available' : `£${formatMetric(metrics.stripeMonthlyRevenueGbp)}`}</div>
         </div>
         <div className="br-hq-stat-card">
           <div className="br-hq-stat-label">Customer AI / Owner AI</div>
           <div className="br-hq-stat-value" style={{ fontSize: '1.1rem', paddingTop: '6px' }}>
-            <span style={{ color: '#0f766e' }}>● {metrics.customerAiStatus}</span> /{' '}
-            <span style={{ color: '#0f766e' }}>● {metrics.ownerAiStatus}</span>
+            <span>Not health-checked</span>
           </div>
         </div>
       </section>
@@ -213,7 +212,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
             <div className="br-hq-panel-header">
               <h2 className="br-hq-panel-title">
                 <img
-                  src="/avatars/buildrush-owner-ai.svg"
+                  src="/buildrush/owner-ai-avatar.svg"
                   alt="BuildRush HQ Advisor"
                   className="br-ai-avatar"
                   onError={(e) => {
@@ -251,8 +250,8 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
                 </div>
                 <p className="br-proposal-consequence">{activeProposal.consequences}</p>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button className="br-btn-confirm" onClick={handleExecuteProposal}>
-                    Confirm & Execute (Logged)
+                  <button className="br-btn-confirm" onClick={handleLogProposal}>
+                    Confirm & Log Proposal
                   </button>
                   <button
                     className="br-btn-primary"
@@ -285,9 +284,11 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
           <div className="br-hq-panel">
             <h3 style={{ marginTop: 0, fontSize: '1.05rem', color: '#101b2b' }}>Urgent Action Items</h3>
             <ul style={{ paddingLeft: '20px', fontSize: '0.88rem', color: '#334155', lineHeight: '1.6' }}>
-              <li>2 customer support tickets flagged for human escalation</li>
-              <li>1 tradesperson reported billing address discrepancy on Stripe</li>
-              <li>3 open jobs without tradesperson response within 24 hours</li>
+              <li>
+                {metrics?.unresolvedTicketsCount == null
+                  ? 'Unresolved support tickets: not available'
+                  : `${formatMetric(metrics.unresolvedTicketsCount)} unresolved support tickets`}
+              </li>
             </ul>
 
             <h3 style={{ marginTop: '20px', fontSize: '1.05rem', color: '#101b2b' }}>Public Assistant Status</h3>
@@ -331,27 +332,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
           <p style={{ fontSize: '0.88rem', color: '#64748b' }}>
             End-of-month operational summaries, carried-over open cases, and key business decisions.
           </p>
-          {monthlyArchives.map((arch) => (
-            <div key={arch.id} style={{ marginTop: '16px', padding: '18px', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <strong style={{ fontSize: '1.1rem' }}>Month: {arch.monthKey}</strong>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Archived records: {arch.archivedRoutineCount}</span>
-              </div>
-              <p style={{ fontSize: '0.9rem', color: '#334155' }}>{arch.summary}</p>
-              <h4 style={{ margin: '10px 0 6px', fontSize: '0.88rem' }}>Carried-Over Open Cases</h4>
-              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#475569' }}>
-                {arch.openCases.map((c) => (
-                  <li key={c.id}><strong>{c.id}:</strong> {c.subject} ({c.status})</li>
-                ))}
-              </ul>
-              <h4 style={{ margin: '10px 0 6px', fontSize: '0.88rem' }}>Key Decisions Preserved</h4>
-              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#475569' }}>
-                {arch.keyDecisions.map((d) => (
-                  <li key={d.id}><strong>{d.decision}</strong> — {d.rationale} ({d.date})</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <p>Archive records are not loaded by this HQ view and have not been verified.</p>
         </section>
       )}
 
@@ -360,7 +341,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
         <section className="br-hq-panel">
           <h2 className="br-hq-panel-title">Owner Audit Trail (Logged Sensitive Actions)</h2>
           <p style={{ fontSize: '0.88rem', color: '#64748b' }}>
-            Permanent record of confirmed owner actions (refunds, suspensions, data deletions, policy updates).
+            Owner-confirmed proposals recorded by the server; business actions are not executed here.
           </p>
           {auditLogs.length === 0 ? (
             <p style={{ color: '#94a3b8', fontStyle: 'italic', marginTop: '14px' }}>

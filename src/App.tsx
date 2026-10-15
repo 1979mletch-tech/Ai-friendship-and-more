@@ -803,7 +803,7 @@ const App = () => {
   )
 
   if (route === '/owner') {
-    return <OwnerHq />
+    return <OwnerHq authToken={session?.accessToken} />
   }
 
   if (route === '/buildrush') {
