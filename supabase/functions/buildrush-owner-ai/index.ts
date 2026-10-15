@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Invalid JSON request' }, 400)
   }
 
-  // Action: Confirm and execute sensitive action (with audit logging)
+  // Confirm and log sensitive-action proposals only; no business action is executed here.
   if (body?.action === 'confirm_sensitive_action') {
     const proposal = body?.proposal
     if (!proposal || !proposal.actionType || !proposal.targetId) {
@@ -106,10 +106,59 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       success: true,
-      executed: true,
+      executed: false,
       actionType: proposal.actionType,
-      message: `Action ${proposal.actionType} was successfully verified, logged, and executed by owner ${user.id}.`,
+      message: `Proposal to ${proposal.actionType} was confirmed and logged. No business action was executed because no execution integration is configured.`,
       loggedAt: new Date().toISOString(),
+    })
+  }
+
+  const countRows = async (
+    table: string,
+    filter?: { column: string; value: string | string[] },
+  ): Promise<number | null> => {
+    let query = supabaseUser.from(table).select('id', { count: 'exact', head: true })
+    if (filter) {
+      query = Array.isArray(filter.value)
+        ? query.in(filter.column, filter.value)
+        : query.eq(filter.column, filter.value)
+    }
+    const { count, error } = await query
+    return error ? null : count ?? 0
+  }
+
+  if (body?.action === 'get_dashboard') {
+    const [
+      openJobsCount,
+      completedJobsCount,
+      totalCustomers,
+      totalTradespeople,
+      activeSubscriptionsCount,
+      unresolvedTicketsCount,
+    ] = await Promise.all([
+      countRows('buildrush_jobs', { column: 'status', value: 'open' }),
+      countRows('buildrush_jobs', { column: 'status', value: 'completed' }),
+      countRows('buildrush_profiles', { column: 'role', value: 'customer' }),
+      countRows('buildrush_profiles', { column: 'role', value: 'tradesperson' }),
+      countRows('buildrush_subscriptions', { column: 'status', value: 'active' }),
+      countRows('buildrush_support_tickets', { column: 'status', value: ['open', 'in_progress'] }),
+    ])
+
+    return jsonResponse({
+      metrics: {
+        jobsNeedingAttention: null,
+        openJobsCount,
+        completedJobsCount,
+        totalCustomers,
+        totalTradespeople,
+        activeSubscriptionsCount,
+        stripeMonthlyRevenueGbp: null,
+        unresolvedTicketsCount,
+        aiEscalatedTicketsCount: null,
+        customerAiStatus: null,
+        ownerAiStatus: null,
+        lastMonthlyArchive: null,
+      },
     })
   }
 
@@ -131,17 +180,35 @@ Deno.serve(async (req) => {
   const latestUserMessage = messages[messages.length - 1].content
   const sensitiveCheck = detectSensitiveAction(latestUserMessage)
 
-  // Operational Context Snapshot
-  const operationalSnapshot = body?.metrics || {
-    jobsNeedingAttention: 3,
-    openJobsCount: 14,
-    completedJobsCount: 52,
-    totalCustomers: 88,
-    totalTradespeople: 39,
-    activeSubscriptionsCount: 31,
-    stripeMonthlyRevenueGbp: 1550,
-    unresolvedTicketsCount: 2,
-    aiEscalatedTicketsCount: 1,
+  // Read operational context from authorised database records; never trust client-supplied metrics.
+  const [
+    openJobsCount,
+    completedJobsCount,
+    totalCustomers,
+    totalTradespeople,
+    activeSubscriptionsCount,
+    unresolvedTicketsCount,
+  ] = await Promise.all([
+    countRows('buildrush_jobs', { column: 'status', value: 'open' }),
+    countRows('buildrush_jobs', { column: 'status', value: 'completed' }),
+    countRows('buildrush_profiles', { column: 'role', value: 'customer' }),
+    countRows('buildrush_profiles', { column: 'role', value: 'tradesperson' }),
+    countRows('buildrush_subscriptions', { column: 'status', value: 'active' }),
+    countRows('buildrush_support_tickets', { column: 'status', value: ['open', 'in_progress'] }),
+  ])
+  const operationalSnapshot = {
+    openJobsCount,
+    completedJobsCount,
+    totalCustomers,
+    totalTradespeople,
+    activeSubscriptionsCount,
+    unresolvedTicketsCount,
+    jobsNeedingAttention: null,
+    stripeMonthlyRevenueGbp: null,
+    aiEscalatedTicketsCount: null,
+    customerAiStatus: null,
+    ownerAiStatus: null,
+    lastMonthlyArchive: null,
   }
 
   const systemPrompt = `
@@ -149,7 +216,7 @@ You are the BuildRush HQ Advisor, the private, trusted business and operational 
 You operate solely inside the private /owner dashboard.
 Tone: Executive, rigorous, concise, sourced, realistic, and highly protective of company data and security.
 
-CURRENT BUSINESS METRICS (Sourced from database):
+CURRENT BUSINESS METRICS (null means unavailable from the configured data sources):
 ${JSON.stringify(operationalSnapshot, null, 2)}
 
 CORE OPERATING DIRECTIVES:
@@ -179,14 +246,14 @@ CORE OPERATING DIRECTIVES:
   }
 
   if (!openAiKey) {
+    const displayMetric = (value: number | null) => value == null ? 'not available' : value
     const fallbackText = sensitiveProposal
       ? `[Owner AI Advisor - Offline Mode] I have detected a request for sensitive action (${sensitiveProposal.actionType}). ` +
         `As an AI assistant, I cannot and will not execute this action automatically. ` +
-        `I have prepared an action proposal that requires your explicit owner confirmation and will be permanently logged in the audit trail.`
-      : `[Owner AI Advisor - Offline Mode] Current HQ status: ${operationalSnapshot.openJobsCount} open jobs, ` +
-        `${operationalSnapshot.jobsNeedingAttention} jobs needing attention, ` +
-        `£${operationalSnapshot.stripeMonthlyRevenueGbp}/mo Stripe volume from ${operationalSnapshot.activeSubscriptionsCount} active subscriptions. ` +
-        `All systems operating under strict RLS.`
+        `I have prepared an action proposal that requires your explicit owner confirmation and will be recorded in the audit trail.`
+      : `[Owner AI Advisor - Offline Mode] Current HQ data: ${displayMetric(operationalSnapshot.openJobsCount)} open jobs, ` +
+        `${displayMetric(operationalSnapshot.activeSubscriptionsCount)} active subscriptions. ` +
+        `Stripe volume and jobs needing attention are not available from the configured data sources.`
 
     return jsonResponse({
       reply: fallbackText,

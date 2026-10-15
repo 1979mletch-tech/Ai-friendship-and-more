@@ -52,19 +52,20 @@ describe('BuildRush Security & Isolation Tests', () => {
       expect(infoDetection.actionType).toBeUndefined()
     })
 
-    it('requires explicit confirmation token and proposal before executing', async () => {
+    it('records an explicitly confirmed proposal without executing it', async () => {
       const ownerService = new OwnerAiService()
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
           success: true,
+          executed: false,
           auditLogId: 'audit-log-12345',
-          message: 'Sensitive action refund confirmed and logged to audit trail.',
+          message: 'Proposal confirmed and logged. No business action was executed.',
         }),
       })
       globalThis.fetch = mockFetch
 
-      const result = await ownerService.confirmAndExecuteAction(
+      const result = await ownerService.confirmAndLogProposal(
         {
           id: 'prop-1',
           proposalId: 'prop-1',
@@ -79,11 +80,35 @@ describe('BuildRush Security & Isolation Tests', () => {
       )
 
       expect(result.success).toBe(true)
+      expect(result.executed).toBe(false)
+      expect(result.message).toContain('No business action was executed')
       expect(result.auditLogId).toBe('audit-log-12345')
       expect(mockFetch).toHaveBeenCalledWith(
         '/functions/v1/buildrush-owner-ai',
         expect.objectContaining({
           method: 'POST',
+        }),
+      )
+    })
+
+    it('loads owner dashboard metrics from the authenticated server endpoint', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ metrics: { openJobsCount: 0, stripeMonthlyRevenueGbp: null } }),
+      })
+      globalThis.fetch = mockFetch
+      const ownerService = new OwnerAiService()
+
+      await expect(ownerService.getDashboard('valid-owner-token')).resolves.toEqual({
+        openJobsCount: 0,
+        stripeMonthlyRevenueGbp: null,
+      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/functions/v1/buildrush-owner-ai',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: expect.any(String) }),
+          body: JSON.stringify({ action: 'get_dashboard' }),
         }),
       )
     })

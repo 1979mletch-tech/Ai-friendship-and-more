@@ -8,6 +8,10 @@ import type {
   SensitiveActionProposal,
 } from '../types'
 
+export type OwnerDashboardMetrics = {
+  [Key in keyof OwnerOperationalMetrics]?: OwnerOperationalMetrics[Key] | null
+}
+
 export interface OwnerAiResponse {
   reply: string
   isAi: true
@@ -41,11 +45,7 @@ export class OwnerAiService {
     this.recovery.clearSession()
   }
 
-  public async sendOwnerMessage(
-    text: string,
-    authToken: string,
-    metrics?: Partial<OwnerOperationalMetrics>,
-  ): Promise<OwnerAiResponse> {
+  public async sendOwnerMessage(text: string, authToken: string): Promise<OwnerAiResponse> {
     const clean = this.recovery.sanitizeInput(text, 2000)
     if (!clean) {
       throw new Error('Message cannot be empty.')
@@ -74,7 +74,6 @@ export class OwnerAiService {
           },
           body: JSON.stringify({
             messages: this.messages.slice(-20).map((m) => ({ role: m.role, text: m.text })),
-            metrics,
           }),
           signal,
         })
@@ -119,10 +118,10 @@ export class OwnerAiService {
   }
 
   // Explicit confirmation workflow for sensitive actions (never executed silently)
-  public async confirmAndExecuteAction(
+  public async confirmAndLogProposal(
     proposal: SensitiveActionProposal,
     authToken: string,
-  ): Promise<{ success: boolean; message: string; auditLogId?: string }> {
+  ): Promise<{ success: boolean; executed: false; message: string; auditLogId?: string }> {
     if (!proposal.requiresOwnerConfirmation) {
       throw new Error('Action does not require confirmation.')
     }
@@ -145,23 +144,52 @@ export class OwnerAiService {
     }
 
     const data = await res.json()
+    if (data.executed !== false) {
+      throw new Error('Action execution is not available; the server did not confirm this was a log-only request.')
+    }
     return {
       success: true,
-      message: data.message || 'Action confirmed and logged.',
+      executed: false,
+      message: data.message || 'Proposal confirmed and logged. No business action was executed.',
       auditLogId: data.auditLogId,
     }
+  }
+
+  public async getDashboard(authToken: string): Promise<OwnerDashboardMetrics> {
+    if (!authToken) {
+      throw new Error('Owner authorization token required.')
+    }
+
+    const res = await fetch(this.endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + authToken,
+      },
+      body: JSON.stringify({ action: 'get_dashboard' }),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Unable to load owner dashboard.')
+    }
+
+    const data = await res.json()
+    if (!data?.metrics || typeof data.metrics !== 'object') {
+      throw new Error('Owner dashboard returned no operational data.')
+    }
+    return data.metrics as OwnerDashboardMetrics
   }
 
   // Alias for sendMessage (throws on error for programmatic verification)
   public async sendMessage(
     text: string,
     authToken?: string,
-    metrics?: Partial<OwnerOperationalMetrics>,
   ): Promise<OwnerAiResponse> {
     if (!authToken) {
       throw new Error('Owner authorization token required.')
     }
-    const response = await this.sendOwnerMessage(text, authToken, metrics)
+    const response = await this.sendOwnerMessage(text, authToken)
     if (response.error) {
       throw new Error(response.error)
     }
@@ -187,4 +215,3 @@ export function detectSensitiveAction(text: string): { isSensitive: boolean; act
   }
   return { isSensitive: false }
 }
-
