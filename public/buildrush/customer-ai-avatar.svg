@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Rushie - BuildRush Customer and Tradesperson AI Assistant">
+  <defs>
+    <linearGradient id="bgCust" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="helmetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+    <linearGradient id="faceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fdf2e9" />
+      <stop offset="100%" stop-color="#fcd34d" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="56" fill="url(#bgCust)" stroke="#ffffff" stroke-width="3" filter="url(#shadow)" />
+
+  <!-- Hardhat / Builder Helmet -->
+  <path d="M 32 46 C 32 26 88 26 88 46 L 94 52 L 26 52 Z" fill="url(#helmetGrad)" stroke="#b45309" stroke-width="2" />
+  <rect x="22" y="50" width="76" height="6" rx="3" fill="#eab308" stroke="#b45309" stroke-width="1.5" />
+  <circle cx="60" cy="36" r="5" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+  <path d="M 58 36 L 62 36 M 60 34 L 60 38" stroke="#b45309" stroke-width="1.5" stroke-linecap="round" />
+
+  <!-- Friendly Face -->
+  <path d="M 36 56 C 36 78 84 78 84 56 Z" fill="url(#faceGrad)" stroke="#b45309" stroke-width="1.5" />
+  
+  <!-- Eyes -->
+  <circle cx="48" cy="62" r="4.5" fill="#1e293b" />
+  <circle cx="49.5" cy="60.5" r="1.5" fill="#ffffff" />
+  <circle cx="72" cy="62" r="4.5" fill="#1e293b" />
+  <circle cx="73.5" cy="60.5" r="1.5" fill="#ffffff" />
+
+  <!-- Friendly Smile -->
+  <path d="M 50 71 Q 60 80 70 71" fill="none" stroke="#b45309" stroke-width="2.5" stroke-linecap="round" />
+
+  <!-- Small Wrench Badge on Collar -->
+  <path d="M 40 88 C 40 80 80 80 80 88 L 86 106 C 86 112 34 112 34 106 Z" fill="#0b192c" />
+  <path d="M 56 94 L 64 102 M 64 94 L 56 102" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" />
+
+  <!-- AI Disclosure Pill -->
+  <rect x="30" y="102" width="60" height="15" rx="7.5" fill="#0284c7" stroke="#ffffff" stroke-width="1.5" />
+  <text x="60" y="112.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8.5" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">AI ASSISTANT</text>
+</svg>
