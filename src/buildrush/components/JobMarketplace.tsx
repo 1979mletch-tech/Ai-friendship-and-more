@@ -1,6 +1,7 @@
-import { useState, type FC, type FormEvent } from 'react';
+import { useEffect, useState, type FC, type FormEvent } from 'react';
 import type { Job, TradeCategory, JobUrgency } from '../types';
 import { getTradeCategoryGuidance } from '../config/pricingGuidance';
+import { OwnerAiService } from '../services/ownerAiService';
 import { CustomerAiChat } from './CustomerAiChat';
 import './marketplace.css';
 
@@ -80,8 +81,9 @@ const TRADE_CATEGORIES: { id: TradeCategory | 'all'; label: string }[] = [
   { id: 'general', label: '🛠️ General Repair' },
 ];
 
-export const JobMarketplace: FC = () => {
+export const JobMarketplace: FC<{ authToken?: string }> = ({ authToken }) => {
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
+  const [verifiedOwnerToken, setVerifiedOwnerToken] = useState('');
   const [selectedTrade, setSelectedTrade] = useState<TradeCategory | 'all'>('all');
   const [searchPostcode, setSearchPostcode] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -101,6 +103,18 @@ export const JobMarketplace: FC = () => {
   const [alertTrade, setAlertTrade] = useState<TradeCategory>('plumbing');
   const [alertPostcode, setAlertPostcode] = useState('');
   const [alertSuccess, setAlertSuccess] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!authToken) return () => { active = false; };
+
+    const ownerAi = new OwnerAiService();
+    ownerAi.getDashboard(authToken)
+      .then(() => { if (active) setVerifiedOwnerToken(authToken); })
+      .catch(() => { if (active) setVerifiedOwnerToken(''); });
+
+    return () => { active = false; };
+  }, [authToken]);
 
   // Filtered jobs
   const filteredJobs = jobs.filter((j) => {
@@ -165,9 +179,11 @@ export const JobMarketplace: FC = () => {
           </a>
 
           <div className="buildrush-nav-actions">
-            <a href="#owner" className="buildrush-nav-link" title="Private Owner Headquarters">
-              🔒 Owner HQ
-            </a>
+            {authToken && verifiedOwnerToken === authToken && (
+              <a href="#/owner" className="buildrush-nav-link" title="Private Owner Headquarters">
+                🔒 Owner HQ
+              </a>
+            )}
             <button
               type="button"
               className="buildrush-btn-chat-trigger"
