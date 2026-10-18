@@ -77,7 +77,7 @@ export const OwnerHq: React.FC<OwnerHqProps> = ({
         </h1>
         <p style={{ color: '#475569', fontSize: '0.95rem', lineHeight: '1.6' }}>
           {accessState === 'signed-out'
-            ? <>This is private. <a href="#/account">Sign in</a> and return to the owner page.</>
+            ? <>This is private. <a href="#/account?returnTo=/owner">Sign in</a> and return to the owner page.</>
             : accessState === 'loading'
               ? 'The server is verifying your owner permissions.'
               : accessState === 'forbidden'

@@ -6,7 +6,7 @@ import { applyProjectNotesLimit, getEntitlements, plans } from './utils/entitlem
 import { disclosureText, getAssistantResponse, isCrisisText as isCrisisTextForClient } from './utils/safety'
 import { safeLocalStorageDelete, safeLocalStorageGet, safeLocalStorageSet } from './utils/storage'
 import { hasCloudAuth } from './config/cloud'
-import { deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
+import { completePasswordRecovery, deleteAccount, loadSession, requestPasswordReset, saveSession, signIn, signOut, signUp, type AuthSession } from './services/authService'
 import { sendCloudChat } from './services/chatService'
 import { backupConversation, backupMemoryItems, deleteCloudConversation, deleteCloudMemory, loadCloudConversations, loadCloudMemories, type CloudConversationRow, type CloudMemoryRow } from './services/cloudSyncServiceV2'
 import { getProfile } from './services/cloudDataService'
@@ -53,23 +53,43 @@ const STORAGE_KEYS = {
 }
 
 const parseRoute = (): Route => {
+  const hash = window.location.hash.replace('#', '') || '/'
+  const normalized = hash.startsWith('/') ? hash : '/' + hash
+  const hashRoute = normalized.split('?')[0]
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  if (
+    new URLSearchParams(window.location.search).get('return') === 'password-recovery' ||
+    hashParams.get('type') === 'recovery'
+  ) return '/account'
+  if (hashRoute === '/owner' || hashRoute === '/buildrush') return hashRoute
+  if (
+    hashRoute === '/chat' || hashRoute === '/history' || hashRoute === '/memory' ||
+    hashRoute === '/settings' || hashRoute === '/account' || hashRoute === '/pricing' ||
+    hashRoute === '/privacy' || hashRoute === '/immersive'
+  ) {
+    return hashRoute
+  }
+
   if (
     typeof window !== 'undefined' &&
     (window.location.hostname === 'thebuildrush.com' ||
       window.location.hostname.endsWith('.thebuildrush.com'))
   ) {
-    const rawPath = (window.location.pathname || '') + (window.location.hash || '')
-    if (rawPath.includes('owner')) return '/owner'
+    if ((window.location.pathname || '').includes('owner')) return '/owner'
     return '/buildrush'
   }
-  const hash = window.location.hash.replace('#', '') || '/'
-  const normalized = hash.startsWith('/') ? hash : '/' + hash
-  if (normalized === '/owner') return '/owner'
-  if (normalized === '/buildrush') return '/buildrush'
-  if (normalized === '/chat' || normalized === '/history' || normalized === '/memory' || normalized === '/settings' || normalized === '/account' || normalized === '/pricing' || normalized === '/privacy' || normalized === '/immersive') {
-    return normalized as Route
-  }
   return '/'
+}
+
+const returnToOwnerHqAfterSignIn = () => {
+  if (/[?&]returnTo=\/owner(?:&|$)/.test(window.location.hash)) {
+    window.location.hash = '/owner'
+  }
+}
+
+const getPasswordRecoveryToken = () => {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  return hashParams.get('type') === 'recovery' ? hashParams.get('access_token') || '' : ''
 }
 
 const getLocalDayKey = (date: Date): string => {
@@ -86,6 +106,7 @@ const App = () => {
   const [session, setSession] = useState<AuthSession | null>(() => loadSession())
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
+  const [recoveryPassword, setRecoveryPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('')
   const [cloudConversations, setCloudConversations] = useState<CloudConversationRow[] | null>(null)
   const [cloudMemories, setCloudMemories] = useState<CloudMemoryRow[] | null>(null)
@@ -558,6 +579,20 @@ const App = () => {
       {!adultAccess && <div className="age-notice"><strong>18+ only.</strong> Adult eligibility must be established before account creation or interactive companion access.</div>}
       {!hasCloudAuth() ? (
         <p className="warn">Cloud accounts are not configured on this deployment yet. Local preview features remain available.</p>
+      ) : getPasswordRecoveryToken() ? (
+        <>
+          <p>Choose a new password for your BuildRush account.</p>
+          <label>New password<input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={recoveryPassword} onChange={(e) => setRecoveryPassword(e.target.value)} /></label>
+          <button type="button" disabled={authBusy || recoveryPassword.length < 8} onClick={() => void runAccountAction(async () => {
+            try {
+              await completePasswordRecovery(getPasswordRecoveryToken(), recoveryPassword)
+              setRecoveryPassword('')
+              setAuthStatus('Password updated. Sign in with your new password.')
+              window.history.replaceState(null, document.title, window.location.pathname + '#/account')
+            } catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Unable to update password.') }
+          })}>Update password</button>
+          {authStatus && <p className="small" role="status">{authStatus}</p>}
+        </>
       ) : session ? (
         <>
           <p>Signed in as <strong>{session.user.email}</strong>.</p>
@@ -664,7 +699,7 @@ const App = () => {
           <label>Password<input type="password" autoComplete="current-password" minLength={8} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>
           <div className="starters">
             <button type="button" disabled={authBusy} onClick={() => void runAccountAction(async () => {
-              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Signed in.') } }
+              try { const next = await signIn(authEmail.trim(), authPassword); if (next) { saveSession(next); activateSession(next); setAuthStatus('Signed in.'); returnToOwnerHqAfterSignIn() } }
               catch (error) { setAuthStatus(error instanceof Error ? error.message : 'Sign in failed.') }
             })}>Sign in</button>
             <button type="button" disabled={authBusy || !adultAccess} onClick={() => void runAccountAction(async () => {
@@ -807,7 +842,7 @@ const App = () => {
   }
 
   if (route === '/buildrush') {
-    return <JobMarketplace />
+    return <JobMarketplace authToken={session?.accessToken} />
   }
 
   let page = renderHome()
