@@ -23,3 +23,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Package complete source export
+        run: git archive --format=zip --prefix=ai-friendship-and-more/ HEAD -o "$RUNNER_TEMP/ai-friendship-project-${GITHUB_SHA}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-friendship-project-${{ github.sha }}
+          path: ${{ runner.temp }}/ai-friendship-project-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 30
